@@ -12,4 +12,14 @@ This repository sets up an end-to-end health risk predictor pipeline using the K
 4. **Model Training**: Train sklearn models and save serialized `.pkl` files in `models/`.
 5. **Streamlit Dashboard**: Serve predictions and monitoring via a Streamlit app.
 
+## Getting started
+1. Create and activate a virtual environment:
+   - `python -m venv .venv`
+   - On macOS/Linux: `source .venv/bin/activate`
+   - On Windows: `.venv\\Scripts\\activate`
+2. Install dependencies: `pip install -r requirements.txt`.
+3. Run `sql/schema.sql` in Supabase (via the SQL editor) to create raw and daily metric tables.
+4. Set `SUPABASE_DB_URL` and (optionally) `SUPABASE_SCHEMA` environment variables.
+5. Load the raw Fitbit data into Supabase: `python -m src.ingestion.load_raw_fitbit`.
+
 This PR establishes the project scaffolding; detailed logic will be added in future iterations.
