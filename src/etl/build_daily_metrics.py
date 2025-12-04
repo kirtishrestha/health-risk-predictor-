@@ -13,16 +13,23 @@ OUTPUT_PATH = Path("data/processed/daily_metrics.csv")
 OUTPUT_PATH_COMBINED = Path("data/processed/daily_metrics_combined.csv")
 
 
-def _read_csv(spark: SparkSession, path: Path, timestamp: bool = False) -> DataFrame:
+def _read_csv(
+    path: Path, spark: SparkSession, options: Optional[dict] = None
+) -> DataFrame:
     """Read a CSV file with headers and inferred schema."""
-    options = {"header": True, "inferSchema": True}
-    if timestamp:
-        options["timestampFormat"] = "M/d/yyyy h:mm:ss a"
-    return spark.read.csv(str(path), **options)
+
+    if not path.exists():
+        raise FileNotFoundError(f"CSV file not found at {path}")
+
+    read_options = {"header": True, "inferSchema": True}
+    if options:
+        read_options.update(options)
+
+    return spark.read.csv(str(path), **read_options)
 
 
 def _load_daily_activity(spark: SparkSession, data_dir: Path) -> DataFrame:
-    df = _read_csv(spark, data_dir / "dailyActivity_merged.csv")
+    df = _read_csv(data_dir / "dailyActivity_merged.csv", spark)
     return df.select(
         F.col("Id").alias("id"),
         F.to_date("ActivityDate", "M/d/yyyy").alias("date"),
@@ -36,8 +43,17 @@ def _load_daily_activity(spark: SparkSession, data_dir: Path) -> DataFrame:
     )
 
 
-def _load_sleep(spark: SparkSession, data_dir: Path) -> DataFrame:
-    df = _read_csv(spark, data_dir / "sleepDay_merged.csv")
+def _load_sleep(spark: SparkSession, data_dir: Path) -> Optional[DataFrame]:
+    sleep_path = data_dir / "sleepDay_merged.csv"
+
+    if not sleep_path.exists():
+        logging.warning(
+            "Sleep file not found at %s; continuing without sleep for this source.",
+            sleep_path,
+        )
+        return None
+
+    df = _read_csv(sleep_path, spark)
     return df.select(
         F.col("Id").alias("id"),
         F.to_date("SleepDay", "M/d/yyyy h:mm:ss a").alias("date"),
@@ -48,7 +64,11 @@ def _load_sleep(spark: SparkSession, data_dir: Path) -> DataFrame:
 
 
 def _load_heart_rate(spark: SparkSession, data_dir: Path) -> DataFrame:
-    df = _read_csv(spark, data_dir / "heartrate_seconds_merged.csv", timestamp=True)
+    df = _read_csv(
+        data_dir / "heartrate_seconds_merged.csv",
+        spark,
+        options={"timestampFormat": "M/d/yyyy h:mm:ss a"},
+    )
     df = df.select(
         F.col("Id").alias("id"),
         F.to_timestamp("Time", "M/d/yyyy h:mm:ss a").alias("ts"),
@@ -84,11 +104,12 @@ def build_daily_metrics_for_folder(
     sleep = _load_sleep(spark, base_path)
     heart_rate = _aggregate_heart_rate(_load_heart_rate(spark, base_path))
 
-    joined = (
-        daily_activity.alias("da")
-        .join(sleep.alias("sl"), on=["id", "date"], how="left")
-        .join(heart_rate.alias("hr"), on=["id", "date"], how="left")
+    joined = daily_activity.alias("da").join(
+        heart_rate.alias("hr"), on=["id", "date"], how="left"
     )
+
+    if sleep is not None:
+        joined = joined.join(sleep.alias("sl"), on=["id", "date"], how="left")
 
     return joined.select(
         F.col("id"),
