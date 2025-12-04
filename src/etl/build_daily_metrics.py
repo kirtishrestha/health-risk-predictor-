@@ -110,6 +110,11 @@ def build_daily_metrics_for_folder(
 
     if sleep is not None:
         joined = joined.join(sleep.alias("sl"), on=["id", "date"], how="left")
+    else:
+        joined = (
+            joined.withColumn("total_minutes_asleep", F.lit(None).cast("double"))
+            .withColumn("total_time_in_bed", F.lit(None).cast("double"))
+        )
 
     return joined.select(
         F.col("id"),
