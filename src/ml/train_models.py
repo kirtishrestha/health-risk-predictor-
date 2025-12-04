@@ -6,6 +6,8 @@ that may only contain feature names.
 """
 from __future__ import annotations
 
+import datetime
+import json
 import pickle
 from pathlib import Path
 from typing import List, Optional
@@ -40,17 +42,18 @@ def train_and_save_model(
     feature_cols: List[str],
     *,
     model: object,
+    dataset_path: Path,
     model_filename: Optional[str] = None,
     encoder_filename: Optional[str] = None,
     feature_filename: Optional[str] = None,
-) -> None:
+) -> Optional[dict]:
     """
     Train a classification model for the provided target and persist artifacts.
     """
     prepared = df.dropna(subset=feature_cols + [target_col])
     if prepared.empty:
         print(f"No data available to train target '{target_col}'. Skipping.")
-        return
+        return None
 
     X = prepared[feature_cols]
     y = prepared[target_col]
@@ -92,6 +95,19 @@ def train_and_save_model(
     with feature_path.open("wb") as f:
         pickle.dump(feature_cols, f)
 
+    metrics_record = {
+        "target": target_col,
+        "model": model.__class__.__name__,
+        "accuracy": float(acc),
+        "macro_f1": float(macro_f1),
+        "feature_cols": feature_cols,
+        "train_size": len(X_train),
+        "test_size": len(X_test),
+        "dataset_path": str(dataset_path),
+    }
+
+    return metrics_record
+
 
 def main() -> None:
     feature_cols = [
@@ -123,6 +139,8 @@ def main() -> None:
 
     df = load_data(data_path)
 
+    all_metrics = []
+
     rf_targets = [
         ("health_risk_level", "health"),
         ("cardiovascular_strain_risk", "cardio"),
@@ -131,25 +149,75 @@ def main() -> None:
     ]
 
     for target_col, model_name in rf_targets:
-        train_and_save_model(
+        metrics = train_and_save_model(
             df,
             target_col,
             model_name,
             feature_cols,
             model=RandomForestClassifier(n_estimators=100, random_state=42),
+            dataset_path=data_path,
         )
+        if metrics:
+            all_metrics.append(metrics)
 
     logreg = LogisticRegression(max_iter=1000, multi_class="auto", n_jobs=-1)
-    train_and_save_model(
+    logreg_metrics = train_and_save_model(
         df,
         "health_risk_level",
         "health_logreg",
         feature_cols,
         model=logreg,
+        dataset_path=data_path,
         model_filename="model_health_logreg.pkl",
         encoder_filename="le_health_logreg.pkl",
         feature_filename="feature_cols_health_logreg.pkl",
     )
+    if logreg_metrics:
+        all_metrics.append(logreg_metrics)
+
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+    metrics_payload = {"metrics": all_metrics}
+    metrics_path = MODELS_DIR / "model_metrics.json"
+    with metrics_path.open("w", encoding="utf-8") as f:
+        json.dump(metrics_payload, f, indent=2)
+
+    metadata_payload = {
+        "version": "1.0.0",
+        "trained_at": datetime.datetime.now().isoformat(),
+        "dataset_path": str(data_path),
+        "models": [
+            {
+                "target": "health_risk_level",
+                "model": "RandomForestClassifier",
+                "pickle_path": "models/model_health.pkl",
+            },
+            {
+                "target": "health_risk_level",
+                "model": "LogisticRegression",
+                "pickle_path": "models/model_health_logreg.pkl",
+            },
+            {
+                "target": "cardiovascular_strain_risk",
+                "model": "RandomForestClassifier",
+                "pickle_path": "models/model_cardio.pkl",
+            },
+            {
+                "target": "sleep_quality_risk",
+                "model": "RandomForestClassifier",
+                "pickle_path": "models/model_sleep.pkl",
+            },
+            {
+                "target": "stress_risk",
+                "model": "RandomForestClassifier",
+                "pickle_path": "models/model_stress.pkl",
+            },
+        ],
+    }
+
+    metadata_path = MODELS_DIR / "model_metadata.json"
+    with metadata_path.open("w", encoding="utf-8") as f:
+        json.dump(metadata_payload, f, indent=2)
 
 
 if __name__ == "__main__":

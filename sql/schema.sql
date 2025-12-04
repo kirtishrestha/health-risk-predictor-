@@ -51,3 +51,18 @@ CREATE TABLE IF NOT EXISTS daily_metrics (
     stress_risk TEXT,
     PRIMARY KEY (id, date)
 );
+
+CREATE TABLE IF NOT EXISTS public.prediction_logs (
+    id BIGSERIAL PRIMARY KEY,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    source VARCHAR(50),
+    user_id BIGINT,
+    model_health VARCHAR(100),
+    model_cardio VARCHAR(100),
+    model_sleep VARCHAR(100),
+    model_stress VARCHAR(100),
+    predicted_health_risk_level VARCHAR(20),
+    predicted_cardio_risk VARCHAR(20),
+    predicted_sleep_risk VARCHAR(20),
+    predicted_stress_risk VARCHAR(20)
+);
