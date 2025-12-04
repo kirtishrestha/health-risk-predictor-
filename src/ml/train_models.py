@@ -1,15 +1,19 @@
-"""Train health risk models using labeled daily metrics."""
+"""
+Train health risk models using labeled daily metrics.
 
+Note: running this script will overwrite previously saved model_*.pkl files
+that may only contain feature names.
+"""
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple
+import pickle
+from typing import List
 
-import joblib
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 from .risk_labeling import add_risk_labels
@@ -17,38 +21,33 @@ from .risk_labeling import add_risk_labels
 DATA_PATH = Path("data/processed/daily_metrics.csv")
 MODELS_DIR = Path("models")
 
-FEATURE_COLUMNS = [
-    "total_steps",
-    "total_distance",
-    "very_active_minutes",
-    "fairly_active_minutes",
-    "lightly_active_minutes",
-    "sedentary_minutes",
-    "calories",
-    "total_minutes_asleep",
-    "sleep_efficiency",
-    "avg_hr",
-    "max_hr",
-    "min_hr",
-    "active_minutes",
-]
 
-TARGETS = {
-    "health_risk_level": "health",
-    "cardiovascular_strain_risk": "cardio",
-    "sleep_quality_risk": "sleep",
-    "stress_risk": "stress",
-}
+def load_data(data_path: Path) -> pd.DataFrame:
+    """Load and label the daily metrics data."""
+    df = pd.read_csv(data_path)
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = add_risk_labels(df)
+    return df
 
 
-def _prepare_features(df: pd.DataFrame, target: str) -> Tuple[pd.DataFrame, pd.Series]:
-    labeled = df.dropna(subset=[target] + FEATURE_COLUMNS)
-    X = labeled[FEATURE_COLUMNS]
-    y = labeled[target]
-    return X, y
+def train_and_save_model(
+    df: pd.DataFrame,
+    target_col: str,
+    model_name: str,
+    feature_cols: List[str],
+) -> None:
+    """
+    Train a RandomForest model for the provided target and persist artifacts.
+    """
+    prepared = df.dropna(subset=feature_cols + [target_col])
+    if prepared.empty:
+        print(f"No data available to train target '{target_col}'. Skipping.")
+        return
 
+    X = prepared[feature_cols]
+    y = prepared[target_col]
 
-def _train_model(X: pd.DataFrame, y: pd.Series) -> Tuple[RandomForestClassifier, LabelEncoder]:
     encoder = LabelEncoder()
     y_encoded = encoder.fit_transform(y)
 
@@ -62,32 +61,52 @@ def _train_model(X: pd.DataFrame, y: pd.Series) -> Tuple[RandomForestClassifier,
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
     macro_f1 = f1_score(y_test, y_pred, average="macro")
+    print(f"Target: {target_col} | Accuracy: {acc:.3f} | Macro F1: {macro_f1:.3f}")
 
-    print(f"Target: {y.name} | Accuracy: {acc:.3f} | Macro F1: {macro_f1:.3f}")
+    models_dir = MODELS_DIR
+    models_dir.mkdir(parents=True, exist_ok=True)
 
-    return model, encoder
+    model_path = models_dir / f"model_{model_name}.pkl"
+    encoder_path = models_dir / f"le_{model_name}.pkl"
+    feature_path = models_dir / f"feature_cols_{model_name}.pkl"
+
+    with model_path.open("wb") as f:
+        pickle.dump(model, f)
+    with encoder_path.open("wb") as f:
+        pickle.dump(encoder, f)
+    with feature_path.open("wb") as f:
+        pickle.dump(feature_cols, f)
 
 
-def train_models(training_data_path: Path | None = None, models_dir: Path | None = None) -> None:
-    data_path = training_data_path or DATA_PATH
-    output_dir = models_dir or MODELS_DIR
+def main() -> None:
+    feature_cols = [
+        "total_steps",
+        "total_distance",
+        "very_active_minutes",
+        "fairly_active_minutes",
+        "lightly_active_minutes",
+        "sedentary_minutes",
+        "calories",
+        "total_minutes_asleep",
+        "sleep_efficiency",
+        "avg_hr",
+        "max_hr",
+        "min_hr",
+        "active_minutes",
+    ]
 
-    df = pd.read_csv(data_path)
-    df = add_risk_labels(df)
+    df = load_data(DATA_PATH)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    targets = [
+        ("health_risk_level", "health"),
+        ("cardiovascular_strain_risk", "cardio"),
+        ("sleep_quality_risk", "sleep"),
+        ("stress_risk", "stress"),
+    ]
 
-    for target, prefix in TARGETS.items():
-        X, y = _prepare_features(df, target)
-        if X.empty:
-            print(f"No data available to train target '{target}'. Skipping.")
-            continue
-
-        model, encoder = _train_model(X, y)
-
-        joblib.dump(model, output_dir / f"model_{prefix}.pkl")
-        joblib.dump(encoder, output_dir / f"le_{prefix}.pkl")
+    for target_col, model_name in targets:
+        train_and_save_model(df, target_col, model_name, feature_cols)
 
 
 if __name__ == "__main__":
-    train_models()
+    main()
