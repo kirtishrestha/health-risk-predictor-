@@ -164,7 +164,8 @@ def add_predictions(
         return df.copy()
 
     df_pred = df.copy()
-    X = df_pred[FEATURE_COLUMNS]
+    X_base = df_pred[FEATURE_COLUMNS]
+    X_for_lr = X_base.fillna(0.0)
 
     model_targets = {
         "cardio": "predicted_cardiovascular_strain_risk",
@@ -175,11 +176,13 @@ def add_predictions(
     health_encoder_key = "health_logreg" if health_model_key == "health_logreg" else "health"
     health_model = models.get(health_model_key)
     health_encoder = label_encoders.get(health_encoder_key)
+    X_for_health = X_for_lr if health_model_key == "health_logreg" else X_base
     if health_model is None or health_encoder is None:
         st.error("Missing model or label encoder for health predictions.")
     else:
         try:
-            predictions = health_model.predict(X)
+            # Logistic Regression cannot handle NaNs, so fill them for that model only.
+            predictions = health_model.predict(X_for_health)
             decoded = health_encoder.inverse_transform(predictions)
             df_pred["predicted_health_risk_level"] = decoded
         except Exception as exc:  # pragma: no cover - display prediction failure
@@ -192,7 +195,7 @@ def add_predictions(
             st.error(f"Missing model or label encoder for {target} predictions.")
             continue
         try:
-            predictions = model.predict(X)
+            predictions = model.predict(X_base)
             decoded = encoder.inverse_transform(predictions)
             df_pred[output_col] = decoded
         except Exception as exc:  # pragma: no cover - display prediction failure
