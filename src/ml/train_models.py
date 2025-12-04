@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import pickle
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -37,9 +38,14 @@ def train_and_save_model(
     target_col: str,
     model_name: str,
     feature_cols: List[str],
+    *,
+    model: object,
+    model_filename: Optional[str] = None,
+    encoder_filename: Optional[str] = None,
+    feature_filename: Optional[str] = None,
 ) -> None:
     """
-    Train a RandomForest model for the provided target and persist artifacts.
+    Train a classification model for the provided target and persist artifacts.
     """
     prepared = df.dropna(subset=feature_cols + [target_col])
     if prepared.empty:
@@ -56,20 +62,28 @@ def train_and_save_model(
         X, y_encoded, test_size=0.2, random_state=42
     )
 
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
     macro_f1 = f1_score(y_test, y_pred, average="macro")
-    print(f"Target: {target_col} | Accuracy: {acc:.3f} | Macro F1: {macro_f1:.3f}")
+    print(
+        " | ".join(
+            [
+                f"Target: {target_col}",
+                f"Model: {model.__class__.__name__}",
+                f"Accuracy: {acc:.3f}",
+                f"Macro F1: {macro_f1:.3f}",
+            ]
+        )
+    )
 
     models_dir = MODELS_DIR
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    model_path = models_dir / f"model_{model_name}.pkl"
-    encoder_path = models_dir / f"le_{model_name}.pkl"
-    feature_path = models_dir / f"feature_cols_{model_name}.pkl"
+    model_path = models_dir / (model_filename or f"model_{model_name}.pkl")
+    encoder_path = models_dir / (encoder_filename or f"le_{model_name}.pkl")
+    feature_path = models_dir / (feature_filename or f"feature_cols_{model_name}.pkl")
 
     with model_path.open("wb") as f:
         pickle.dump(model, f)
@@ -109,15 +123,33 @@ def main() -> None:
 
     df = load_data(data_path)
 
-    targets = [
+    rf_targets = [
         ("health_risk_level", "health"),
         ("cardiovascular_strain_risk", "cardio"),
         ("sleep_quality_risk", "sleep"),
         ("stress_risk", "stress"),
     ]
 
-    for target_col, model_name in targets:
-        train_and_save_model(df, target_col, model_name, feature_cols)
+    for target_col, model_name in rf_targets:
+        train_and_save_model(
+            df,
+            target_col,
+            model_name,
+            feature_cols,
+            model=RandomForestClassifier(n_estimators=100, random_state=42),
+        )
+
+    logreg = LogisticRegression(max_iter=1000, multi_class="auto", n_jobs=-1)
+    train_and_save_model(
+        df,
+        "health_risk_level",
+        "health_logreg",
+        feature_cols,
+        model=logreg,
+        model_filename="model_health_logreg.pkl",
+        encoder_filename="le_health_logreg.pkl",
+        feature_filename="feature_cols_health_logreg.pkl",
+    )
 
 
 if __name__ == "__main__":
