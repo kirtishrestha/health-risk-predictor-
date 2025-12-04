@@ -1,0 +1,8 @@
+pandas
+numpy
+pyspark
+SQLAlchemy
+psycopg2-binary
+scikit-learn
+python-dotenv
+streamlit
