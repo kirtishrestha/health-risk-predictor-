@@ -6,8 +6,8 @@ that may only contain feature names.
 """
 from __future__ import annotations
 
-from pathlib import Path
 import pickle
+from pathlib import Path
 from typing import List
 
 import pandas as pd
@@ -19,6 +19,7 @@ from sklearn.preprocessing import LabelEncoder
 from .risk_labeling import add_risk_labels
 
 DATA_PATH = Path("data/processed/daily_metrics.csv")
+DATA_PATH_COMBINED = Path("data/processed/daily_metrics_combined.csv")
 MODELS_DIR = Path("models")
 
 
@@ -95,7 +96,18 @@ def main() -> None:
         "active_minutes",
     ]
 
-    df = load_data(DATA_PATH)
+    combined_path = DATA_PATH_COMBINED
+    default_path = DATA_PATH
+
+    if combined_path.exists():
+        data_path = combined_path
+    else:
+        print(
+            f"Combined dataset not found at {combined_path}, falling back to {default_path}."
+        )
+        data_path = default_path
+
+    df = load_data(data_path)
 
     targets = [
         ("health_risk_level", "health"),

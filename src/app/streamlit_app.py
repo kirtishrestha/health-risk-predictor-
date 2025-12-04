@@ -62,11 +62,23 @@ LABEL_ENCODER_FILES = {
 
 @st.cache_data(show_spinner=False)
 def load_daily_metrics() -> pd.DataFrame:
-    """Load processed daily metrics from CSV."""
+    """Load processed daily metrics from CSV, preferring combined dataset."""
 
-    data_path = Path("data/processed/daily_metrics.csv")
-    if not data_path.exists():
-        st.error(f"Processed metrics file not found at {data_path}.")
+    combined_path = Path("data/processed/daily_metrics_combined.csv")
+    default_path = Path("data/processed/daily_metrics.csv")
+
+    if combined_path.exists():
+        data_path = combined_path
+    elif default_path.exists():
+        st.warning(
+            "Combined daily metrics not found; falling back to bella_b-only dataset."
+        )
+        data_path = default_path
+    else:
+        st.error(
+            "Processed metrics file not found at"
+            f" {combined_path} or {default_path}."
+        )
         return pd.DataFrame()
 
     try:
@@ -74,6 +86,9 @@ def load_daily_metrics() -> pd.DataFrame:
     except Exception as exc:  # pragma: no cover - surface any load issues
         st.error(f"Failed to load daily metrics: {exc}")
         return pd.DataFrame()
+
+    if "source" not in df.columns:
+        df["source"] = "fitbit_bella_b"
 
     missing_cols = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing_cols:
@@ -175,6 +190,15 @@ def render_dashboard() -> None:
         return
 
     df = df.sort_values("date")
+
+    source_options = ["All"] + sorted(df["source"].dropna().unique())
+    selected_source = st.sidebar.selectbox("Select data source", source_options)
+    if selected_source != "All":
+        df = df[df["source"] == selected_source]
+
+    if df.empty:
+        st.warning("No data available for the selected source.")
+        return
 
     user_ids = sorted(df["id"].unique())
     selected_user = st.sidebar.selectbox("Select user ID", user_ids)

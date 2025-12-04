@@ -1,9 +1,10 @@
 # Health Risk Predictor
 
-This repository sets up an end-to-end health risk predictor pipeline using the Kaggle **Fit Bit Raw Datasets** (archive.zip) focused on the **bella_b** participant data. The project is structured for clean ingestion, transformation, modeling, and presentation.
+This repository sets up an end-to-end health risk predictor pipeline using the Kaggle **Fit Bit Raw Datasets** (archive.zip) focused on the **bella_b** participant data and now supporting an additional **bella_a** cohort. The project is structured for clean ingestion, transformation, modeling, and presentation.
 
-## Data Source
-- Single data source: Kaggle Fit Bit Raw Datasets → `bella_b` CSV exports (`dailyActivity_merged`, `sleepDay_merged`, `heartrate_seconds_merged`).
+## Data Sources
+- Primary source: Kaggle Fit Bit Raw Datasets → `bella_b` CSV exports (`dailyActivity_merged`, `sleepDay_merged`, `heartrate_seconds_merged`).
+- Optional secondary source: `bella_a` CSV exports, merged into the combined dataset when present.
 
 ## High-Level Workflow
 1. **Ingestion to Supabase**: Raw CSVs from `data/raw/bella_b` will be loaded into Supabase.
@@ -26,14 +27,17 @@ This PR establishes the project scaffolding; detailed logic will be added in fut
 
 ## ETL and Modeling
 
-The PySpark ETL aggregates the bella_b CSV exports (`dailyActivity_merged`, `sleepDay_merged`, `heartrate_seconds_merged`) into a single daily metrics dataset at `data/processed/daily_metrics.csv`.
+The PySpark ETL aggregates Fitbit CSV exports into daily metrics. It always reads `bella_b` and also reads `bella_a` when the directory is available, writing:
+
+- `data/processed/daily_metrics.csv` (bella_b-only for backward compatibility when available)
+- `data/processed/daily_metrics_combined.csv` (all available sources)
 
 - Run ETL: `python -m src.etl.build_daily_metrics`
-- Label and train models: `python -m src.ml.train_models`
+- Label and train models: `python -m src.ml.train_models` (trains on the combined dataset when present)
 
 ## Streamlit dashboard
 
-Launch the local dashboard to explore metrics and predictions:
+Launch the local dashboard to explore metrics and predictions (including a sidebar filter for data source):
 
 ```bash
 streamlit run src/app/streamlit_app.py
