@@ -23,3 +23,10 @@ This repository sets up an end-to-end health risk predictor pipeline using the K
 5. Load the raw Fitbit data into Supabase: `python -m src.ingestion.load_raw_fitbit`.
 
 This PR establishes the project scaffolding; detailed logic will be added in future iterations.
+
+## ETL and Modeling
+
+The PySpark ETL aggregates the bella_b CSV exports (`dailyActivity_merged`, `sleepDay_merged`, `heartrate_seconds_merged`) into a single daily metrics dataset at `data/processed/daily_metrics.csv`.
+
+- Run ETL: `python -m src.etl.build_daily_metrics`
+- Label and train models: `python -m src.ml.train_models`
