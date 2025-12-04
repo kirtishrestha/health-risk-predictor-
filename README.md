@@ -30,3 +30,11 @@ The PySpark ETL aggregates the bella_b CSV exports (`dailyActivity_merged`, `sle
 
 - Run ETL: `python -m src.etl.build_daily_metrics`
 - Label and train models: `python -m src.ml.train_models`
+
+## Streamlit dashboard
+
+Launch the local dashboard to explore metrics and predictions:
+
+```bash
+streamlit run src/app/streamlit_app.py
+```
