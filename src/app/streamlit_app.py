@@ -47,6 +47,7 @@ FEATURE_COLUMNS = [
 
 MODEL_FILES = {
     "health": "model_health.pkl",
+    "health_logreg": "model_health_logreg.pkl",
     "cardio": "model_cardio.pkl",
     "sleep": "model_sleep.pkl",
     "stress": "model_stress.pkl",
@@ -54,9 +55,15 @@ MODEL_FILES = {
 
 LABEL_ENCODER_FILES = {
     "health": "le_health.pkl",
+    "health_logreg": "le_health_logreg.pkl",
     "cardio": "le_cardio.pkl",
     "sleep": "le_sleep.pkl",
     "stress": "le_stress.pkl",
+}
+
+HEALTH_MODEL_OPTIONS = {
+    "Random Forest": "health",
+    "Logistic Regression": "health_logreg",
 }
 
 
@@ -143,7 +150,9 @@ def load_label_encoders() -> Dict[str, object]:
     return encoders
 
 
-def add_predictions(df: pd.DataFrame, models: Dict[str, object], label_encoders: Dict[str, object]) -> pd.DataFrame:
+def add_predictions(
+    df: pd.DataFrame, models: Dict[str, object], label_encoders: Dict[str, object], *, health_model_key: str
+) -> pd.DataFrame:
     """Generate predictions and append them to the dataframe."""
 
     missing_features = [col for col in FEATURE_COLUMNS if col not in df.columns]
@@ -154,15 +163,27 @@ def add_predictions(df: pd.DataFrame, models: Dict[str, object], label_encoders:
         )
         return df.copy()
 
+    df_pred = df.copy()
+    X = df_pred[FEATURE_COLUMNS]
+
     model_targets = {
-        "health": "predicted_health_risk_level",
         "cardio": "predicted_cardiovascular_strain_risk",
         "sleep": "predicted_sleep_quality_risk",
         "stress": "predicted_stress_risk",
     }
 
-    df_pred = df.copy()
-    X = df_pred[FEATURE_COLUMNS]
+    health_encoder_key = "health_logreg" if health_model_key == "health_logreg" else "health"
+    health_model = models.get(health_model_key)
+    health_encoder = label_encoders.get(health_encoder_key)
+    if health_model is None or health_encoder is None:
+        st.error("Missing model or label encoder for health predictions.")
+    else:
+        try:
+            predictions = health_model.predict(X)
+            decoded = health_encoder.inverse_transform(predictions)
+            df_pred["predicted_health_risk_level"] = decoded
+        except Exception as exc:  # pragma: no cover - display prediction failure
+            st.error(f"Failed to compute health predictions: {exc}")
 
     for target, output_col in model_targets.items():
         model = models.get(target)
@@ -228,7 +249,24 @@ def render_dashboard() -> None:
         st.error("Models or label encoders are unavailable. Please check the models directory.")
         return
 
-    df_pred = add_predictions(df_filtered, models, encoders)
+    available_health_options = {
+        label: key
+        for label, key in HEALTH_MODEL_OPTIONS.items()
+        if key in models and key in encoders
+    }
+    if not available_health_options:
+        st.error("No health risk models are available. Please verify training outputs.")
+        return
+
+    health_model_label = st.sidebar.selectbox(
+        "Select health risk model",
+        options=list(available_health_options.keys()),
+    )
+    selected_health_model = available_health_options[health_model_label]
+
+    df_pred = add_predictions(
+        df_filtered, models, encoders, health_model_key=selected_health_model
+    )
 
     display_columns = [
         "date",
