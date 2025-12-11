@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from typing import Dict
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -309,6 +310,11 @@ def render_dashboard() -> None:
 
     st.title("Fitbit Health Risk Dashboard")
 
+    st.caption(
+        "Models are trained on labeled historical days (labels come from heuristic rules) "
+        "and then used to predict risk levels on new, unseen days."
+    )
+
     df = load_daily_metrics()
     if df.empty:
         st.warning("No data available to display.")
@@ -378,7 +384,17 @@ def render_dashboard() -> None:
     with st.expander("Model performance summary", expanded=False):
         if metrics_data and metrics_data.get("metrics"):
             perf_df = pd.DataFrame(metrics_data["metrics"])
-            st.dataframe(perf_df)
+            summary_cols = [
+                col
+                for col in ["target", "model", "accuracy", "macro_f1", "roc_auc_ovr_macro"]
+                if col in perf_df.columns
+            ]
+            st.subheader("Model summary (per target and model)")
+            st.dataframe(perf_df[summary_cols])
+            st.caption(
+                "Accuracy can mask class imbalance. Macro F1, macro ROC AUC (one-vs-rest), "
+                "and confusion matrices provide a more balanced view across classes."
+            )
             if not perf_df.empty:
                 try:
                     st.subheader("Model accuracy by target")
@@ -392,6 +408,57 @@ def render_dashboard() -> None:
                         index="model", columns="target", values="macro_f1"
                     )
                     st.bar_chart(f1_pivot)
+
+                    st.subheader("ROC AUC (macro, one-vs-rest) by target")
+                    if "roc_auc_ovr_macro" in perf_df:
+                        roc_pivot = perf_df.pivot(
+                            index="model",
+                            columns="target",
+                            values="roc_auc_ovr_macro",
+                        )
+                        st.bar_chart(roc_pivot)
+                    else:
+                        st.info("ROC AUC values not available; retrain models to populate.")
+
+                    if {
+                        "confusion_matrix",
+                        "labels",
+                    }.issubset(set(perf_df.columns)):
+                        st.subheader("Confusion matrix (test set)")
+                        target_to_view = st.selectbox(
+                            "Select target for confusion matrix",
+                            sorted(perf_df["target"].unique()),
+                        )
+                        models_for_target = perf_df[
+                            perf_df["target"] == target_to_view
+                        ]["model"].unique()
+                        model_to_view = st.selectbox(
+                            "Select model", models_for_target
+                        )
+                        row = perf_df[
+                            (perf_df["target"] == target_to_view)
+                            & (perf_df["model"] == model_to_view)
+                        ].iloc[0]
+                        labels = row.get("labels", [])
+                        cm = row.get("confusion_matrix")
+                        if labels and cm is not None:
+                            try:
+                                cm_array = np.array(cm)
+                                fig, ax = plt.subplots()
+                                im = ax.imshow(cm_array, cmap="Blues")
+                                ax.set_xticks(range(len(labels)))
+                                ax.set_yticks(range(len(labels)))
+                                ax.set_xticklabels(labels)
+                                ax.set_yticklabels(labels)
+                                ax.set_xlabel("Predicted")
+                                ax.set_ylabel("True")
+                                plt.colorbar(im, ax=ax)
+                                st.pyplot(fig)
+                            except Exception as exc:
+                                st.info(f"Unable to display confusion matrix: {exc}")
+                        if row.get("class_counts"):
+                            st.write("Class counts used for training/evaluation:")
+                            st.json(row["class_counts"])
                 except Exception as exc:
                     st.info(f"Unable to plot performance summary: {exc}")
         else:
@@ -402,6 +469,10 @@ def render_dashboard() -> None:
             st.write(f"Version: {metadata.get('version', 'unknown')}")
             st.write(f"Trained at: {metadata.get('trained_at', 'unknown')}")
             st.write(f"Dataset path: {metadata.get('dataset_path', 'unknown')}")
+            st.write(
+                "Models are trained on an 80% stratified training split and evaluated on a "
+                "20% holdout test split to approximate performance on new, unseen data."
+            )
             models_meta = metadata.get("models", [])
             if models_meta:
                 st.write("Models:")

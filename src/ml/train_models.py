@@ -2,7 +2,13 @@
 Train health risk models using labeled daily metrics.
 
 Note: running this script will overwrite previously saved model_*.pkl files
-that may only contain feature names.
+that may only contain feature names. The labels are heuristically derived in
+``risk_labeling.py`` and treated as ground truth for supervised training.
+
+The workflow mirrors a standard supervised pipeline: heuristic labels are
+generated, data is split into an 80% stratified training set and a 20%
+stratified test set to simulate unseen days, models are fitted on the training
+portion, and evaluation happens only on the held-out test portion.
 """
 from __future__ import annotations
 
@@ -15,7 +21,7 @@ from typing import List, Optional
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
@@ -61,8 +67,11 @@ def train_and_save_model(
     encoder = LabelEncoder()
     y_encoded = encoder.fit_transform(y)
 
+    # Explicitly hold out 20% of labeled rows as unseen test data to simulate
+    # evaluating on new days that were not part of model fitting. Stratification
+    # preserves the class distribution across splits.
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y_encoded, test_size=0.2, random_state=42
+        X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
     )
 
     model.fit(X_train, y_train)
@@ -70,6 +79,16 @@ def train_and_save_model(
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
     macro_f1 = f1_score(y_test, y_pred, average="macro")
+
+    roc_auc = None
+    cm = confusion_matrix(y_test, y_pred)
+
+    if hasattr(model, "predict_proba"):
+        try:
+            y_proba = model.predict_proba(X_test)
+            roc_auc = roc_auc_score(y_test, y_proba, multi_class="ovr", average="macro")
+        except Exception:
+            roc_auc = None
     print(
         " | ".join(
             [
@@ -77,6 +96,7 @@ def train_and_save_model(
                 f"Model: {model.__class__.__name__}",
                 f"Accuracy: {acc:.3f}",
                 f"Macro F1: {macro_f1:.3f}",
+                f"ROC AUC (macro OVR): {roc_auc:.3f}" if roc_auc is not None else "ROC AUC: n/a",
             ]
         )
     )
@@ -95,15 +115,21 @@ def train_and_save_model(
     with feature_path.open("wb") as f:
         pickle.dump(feature_cols, f)
 
+    class_counts = y.value_counts().to_dict()
+
     metrics_record = {
         "target": target_col,
         "model": model.__class__.__name__,
         "accuracy": float(acc),
         "macro_f1": float(macro_f1),
+        "roc_auc_ovr_macro": float(roc_auc) if roc_auc is not None else None,
+        "confusion_matrix": cm.tolist(),
+        "labels": encoder.classes_.tolist(),
         "feature_cols": feature_cols,
         "train_size": len(X_train),
         "test_size": len(X_test),
         "dataset_path": str(dataset_path),
+        "class_counts": class_counts,
     }
 
     return metrics_record
@@ -154,13 +180,18 @@ def main() -> None:
             target_col,
             model_name,
             feature_cols,
-            model=RandomForestClassifier(n_estimators=100, random_state=42),
+            model=RandomForestClassifier(
+                n_estimators=200,
+                random_state=42,
+                class_weight="balanced",
+                n_jobs=-1,
+            ),
             dataset_path=data_path,
         )
         if metrics:
             all_metrics.append(metrics)
 
-    logreg = LogisticRegression(max_iter=1000, multi_class="auto", n_jobs=-1)
+    logreg = LogisticRegression(max_iter=2000, class_weight="balanced")
     logreg_metrics = train_and_save_model(
         df,
         "health_risk_level",
@@ -186,6 +217,7 @@ def main() -> None:
         "version": "1.0.0",
         "trained_at": datetime.datetime.now().isoformat(),
         "dataset_path": str(data_path),
+        "train_test_split": {"train_frac": 0.8, "test_frac": 0.2, "stratified": True},
         "models": [
             {
                 "target": "health_risk_level",
