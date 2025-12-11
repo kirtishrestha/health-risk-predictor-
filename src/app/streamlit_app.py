@@ -309,6 +309,11 @@ def render_dashboard() -> None:
 
     st.title("Fitbit Health Risk Dashboard")
 
+    st.caption(
+        "Models are trained on labeled historical days (labels come from heuristic rules) "
+        "and then used to predict risk levels on new, unseen days."
+    )
+
     df = load_daily_metrics()
     if df.empty:
         st.warning("No data available to display.")
@@ -392,6 +397,33 @@ def render_dashboard() -> None:
                         index="model", columns="target", values="macro_f1"
                     )
                     st.bar_chart(f1_pivot)
+
+                    st.subheader("ROC AUC (macro, one-vs-rest) by target")
+                    if "roc_auc_macro_ovr" in perf_df:
+                        roc_pivot = perf_df.pivot(
+                            index="model",
+                            columns="target",
+                            values="roc_auc_macro_ovr",
+                        )
+                        st.bar_chart(roc_pivot)
+                    else:
+                        st.info("ROC AUC values not available; retrain models to populate.")
+
+                    if "confusion_matrix" in perf_df.columns:
+                        st.subheader("Confusion matrices (test set)")
+                        targets = perf_df["target"].unique()
+                        selected_target = st.selectbox(
+                            "Select target for confusion matrix",
+                            options=list(targets),
+                        )
+                        target_rows = perf_df[perf_df["target"] == selected_target]
+                        if not target_rows.empty:
+                            matrix_value = target_rows.iloc[0]["confusion_matrix"]
+                            try:
+                                cm_df = pd.DataFrame(matrix_value)
+                                st.dataframe(cm_df)
+                            except Exception as exc:
+                                st.info(f"Unable to display confusion matrix: {exc}")
                 except Exception as exc:
                     st.info(f"Unable to plot performance summary: {exc}")
         else:
