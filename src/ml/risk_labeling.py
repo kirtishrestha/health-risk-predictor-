@@ -1,4 +1,9 @@
-"""Risk labeling utilities for Fitbit-derived daily metrics."""
+"""Risk labeling utilities for Fitbit-derived daily metrics.
+
+These heuristic rules provide labels that act as training targets for the
+supervised models; they approximate risk categories rather than clinical
+diagnoses.
+"""
 
 from __future__ import annotations
 
