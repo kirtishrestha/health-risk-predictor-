@@ -1,8 +1,11 @@
 """Risk labeling utilities for Fitbit-derived daily metrics.
 
-These heuristic rules provide labels that act as training targets for the
-supervised models; they approximate risk categories rather than clinical
-diagnoses.
+Because the Fitbit dataset does not include ground-truth clinical labels for
+these outcomes, we generate heuristic pseudo-labels based on simple thresholds
+and combinations of wearable-derived metrics (steps, sleep, heart rate, etc.).
+These labels act as weak supervision for the machine learning models. In a
+real-world system, these rules would ideally be replaced or validated against
+expert-annotated or clinically validated labels.
 """
 
 from __future__ import annotations
