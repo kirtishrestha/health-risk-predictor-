@@ -1,14 +1,91 @@
 """Risk labeling utilities for Fitbit-derived daily metrics.
 
-These heuristic rules provide labels that act as training targets for the
-supervised models; they approximate risk categories rather than clinical
-diagnoses.
+Because the Fitbit dataset does not include ground-truth clinical labels for
+these outcomes, we generate heuristic pseudo-labels based on simple thresholds
+and combinations of wearable-derived metrics (steps, sleep, heart rate, etc.).
+These labels act as weak supervision for the machine learning models. In a
+real-world system, these rules would ideally be replaced or validated against
+expert-annotated or clinically validated labels.
 """
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+
+def compute_sleep_quality_score(df: pd.DataFrame) -> pd.Series:
+    """Compute a deterministic sleep quality score (0–100).
+
+    The score blends duration and efficiency so it is explainable:
+    - Duration peaks for 7–9 hours (420–540 minutes) and declines outside.
+    - Efficiency uses provided sleep_efficiency or estimates asleep/bed.
+    - Final score = 0.6 * duration_component + 0.4 * efficiency_component.
+    """
+
+    df_local = df.copy()
+
+    minutes_asleep = df_local.get("total_minutes_asleep")
+    if minutes_asleep is None:
+        minutes_asleep = df_local.get("total_sleep_minutes")
+    if minutes_asleep is None:
+        minutes_asleep = pd.Series(np.nan, index=df_local.index)
+    minutes_asleep = pd.to_numeric(minutes_asleep, errors="coerce")
+
+    time_in_bed = df_local.get("total_time_in_bed")
+    if time_in_bed is not None:
+        time_in_bed = pd.to_numeric(time_in_bed, errors="coerce")
+
+    sleep_efficiency = df_local.get("sleep_efficiency")
+    if sleep_efficiency is None:
+        sleep_efficiency = pd.Series(np.nan, index=df_local.index)
+    sleep_efficiency = pd.to_numeric(sleep_efficiency, errors="coerce")
+
+    # If efficiency is missing, estimate from asleep/bed; interpret values <=1 as ratios.
+    estimated_efficiency = None
+    if time_in_bed is not None:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            estimated_efficiency = (minutes_asleep / time_in_bed) * 100
+    efficiency_pct = sleep_efficiency.copy()
+    efficiency_pct = efficiency_pct.where(~efficiency_pct.isna(), estimated_efficiency)
+    efficiency_pct = efficiency_pct.where(efficiency_pct <= 1, efficiency_pct * 1.0)
+    efficiency_pct = efficiency_pct.where(efficiency_pct > 1, efficiency_pct * 100)
+    efficiency_pct = efficiency_pct.clip(0, 100)
+
+    # Duration component: full credit in 7–9 hour window, linearly lower outside.
+    lower_ideal, upper_ideal, long_sleep_floor = 420, 540, 720
+    duration_component = pd.Series(np.nan, index=df_local.index)
+    duration_component = duration_component.where(False, 0)  # initialize with zeros
+    duration_component = np.where(
+        minutes_asleep.isna(),
+        np.nan,
+        np.where(
+            minutes_asleep < lower_ideal,
+            100 * (minutes_asleep / lower_ideal),
+            np.where(
+                minutes_asleep <= upper_ideal,
+                100,
+                100 * ((long_sleep_floor - minutes_asleep) / (long_sleep_floor - upper_ideal)),
+            ),
+        ),
+    )
+    duration_component = pd.Series(duration_component, index=df_local.index).clip(0, 100)
+
+    # Efficiency component: raw percent with an extra penalty below 85% efficiency.
+    efficiency_component = pd.Series(np.nan, index=df_local.index)
+    efficiency_component = np.where(
+        pd.isna(efficiency_pct),
+        np.nan,
+        np.where(
+            efficiency_pct >= 85,
+            efficiency_pct,
+            efficiency_pct * (efficiency_pct / 85),
+        ),
+    )
+    efficiency_component = pd.Series(efficiency_component, index=df_local.index).clip(0, 100)
+
+    score = 0.6 * duration_component + 0.4 * efficiency_component
+    return pd.Series(score, index=df_local.index).clip(0, 100)
 
 
 def _sleep_quality_label(row: pd.Series) -> str | float:
@@ -102,10 +179,11 @@ def _health_risk_label(row: pd.Series) -> str | float:
 
 
 def add_risk_labels(df: pd.DataFrame) -> pd.DataFrame:
-    """Return df with the 4 new label columns added."""
+    """Return df with the 4 new label columns and numeric sleep score added."""
 
     df = df.copy()
 
+    df["sleep_quality_score"] = compute_sleep_quality_score(df)
     df["sleep_quality_risk"] = df.apply(_sleep_quality_label, axis=1)
     df["cardiovascular_strain_risk"] = df.apply(_cardio_strain_label, axis=1)
     df["stress_risk"] = df.apply(_stress_label, axis=1)
@@ -114,4 +192,4 @@ def add_risk_labels(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-__all__ = ["add_risk_labels"]
+__all__ = ["add_risk_labels", "compute_sleep_quality_score"]
