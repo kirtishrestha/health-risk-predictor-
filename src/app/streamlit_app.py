@@ -670,9 +670,6 @@ def render_dashboard() -> None:
     st.subheader("Sleep duration over time (minutes asleep)")
     st.line_chart(df_pred["total_minutes_asleep"])
 
-    st.subheader("Average heart rate over time")
-    st.line_chart(df_pred["avg_hr"])
-
     risk_map = {"low": 0, "moderate": 1, "high": 2}
     health_risk_numeric = df_pred.get("predicted_health_risk_level", pd.Series(dtype="float"))
     health_risk_numeric = health_risk_numeric.map(risk_map)
