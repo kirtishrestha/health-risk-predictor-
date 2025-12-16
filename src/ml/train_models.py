@@ -13,15 +13,24 @@ portion, and evaluation happens only on the held-out test portion.
 from __future__ import annotations
 
 import datetime
+import math
 import json
 import pickle
 from pathlib import Path
 from typing import List, Optional
 
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    f1_score,
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
+    roc_auc_score,
+)
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
@@ -135,6 +144,76 @@ def train_and_save_model(
     return metrics_record
 
 
+def train_and_save_regression(
+    df: pd.DataFrame,
+    target_col: str,
+    model_name: str,
+    feature_cols: List[str],
+    *,
+    model: object,
+    dataset_path: Path,
+    model_filename: Optional[str] = None,
+    feature_filename: Optional[str] = None,
+) -> Optional[dict]:
+    """Train a regression model for the provided target and persist artifacts."""
+
+    prepared = df.dropna(subset=feature_cols + [target_col])
+    if prepared.empty:
+        print(f"No data available to train target '{target_col}'. Skipping.")
+        return None
+
+    X = prepared[feature_cols]
+    y = prepared[target_col]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+
+    model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
+    mae = mean_absolute_error(y_test, y_pred)
+    rmse = math.sqrt(mean_squared_error(y_test, y_pred))
+    r2 = r2_score(y_test, y_pred)
+
+    print(
+        " | ".join(
+            [
+                f"Target: {target_col}",
+                f"Model: {model.__class__.__name__}",
+                f"MAE: {mae:.3f}",
+                f"RMSE: {rmse:.3f}",
+                f"R^2: {r2:.3f}",
+            ]
+        )
+    )
+
+    models_dir = MODELS_DIR
+    models_dir.mkdir(parents=True, exist_ok=True)
+
+    model_path = models_dir / (model_filename or f"model_{model_name}.pkl")
+    feature_path = models_dir / (feature_filename or f"feature_cols_{model_name}.pkl")
+
+    with model_path.open("wb") as f:
+        pickle.dump(model, f)
+    with feature_path.open("wb") as f:
+        pickle.dump(feature_cols, f)
+
+    metrics_record = {
+        "target": target_col,
+        "model": model.__class__.__name__,
+        "mae": float(mae),
+        "rmse": float(rmse),
+        "r2": float(r2),
+        "feature_cols": feature_cols,
+        "train_size": len(X_train),
+        "test_size": len(X_test),
+        "dataset_path": str(dataset_path),
+    }
+
+    return metrics_record
+
+
 def main() -> None:
     feature_cols = [
         "total_steps",
@@ -145,6 +224,7 @@ def main() -> None:
         "sedentary_minutes",
         "calories",
         "total_minutes_asleep",
+        "total_time_in_bed",
         "sleep_efficiency",
         "avg_hr",
         "max_hr",
@@ -170,7 +250,6 @@ def main() -> None:
     rf_targets = [
         ("health_risk_level", "health"),
         ("cardiovascular_strain_risk", "cardio"),
-        ("sleep_quality_risk", "sleep"),
         ("stress_risk", "stress"),
     ]
 
@@ -206,6 +285,35 @@ def main() -> None:
     if logreg_metrics:
         all_metrics.append(logreg_metrics)
 
+    sleep_features = feature_cols
+    sleep_rf = RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1)
+    sleep_metrics = train_and_save_regression(
+        df,
+        "sleep_quality_score",
+        "sleep_reg",
+        sleep_features,
+        model=sleep_rf,
+        dataset_path=data_path,
+        model_filename="model_sleep_reg.pkl",
+        feature_filename="feature_cols_sleep_reg.pkl",
+    )
+    if sleep_metrics:
+        all_metrics.append(sleep_metrics)
+
+    sleep_linear = LinearRegression()
+    sleep_lr_metrics = train_and_save_regression(
+        df,
+        "sleep_quality_score",
+        "sleep_reg_linear",
+        sleep_features,
+        model=sleep_linear,
+        dataset_path=data_path,
+        model_filename="model_sleep_linear.pkl",
+        feature_filename="feature_cols_sleep_linear.pkl",
+    )
+    if sleep_lr_metrics:
+        all_metrics.append(sleep_lr_metrics)
+
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     metrics_payload = {"metrics": all_metrics}
@@ -235,9 +343,14 @@ def main() -> None:
                 "pickle_path": "models/model_cardio.pkl",
             },
             {
-                "target": "sleep_quality_risk",
-                "model": "RandomForestClassifier",
-                "pickle_path": "models/model_sleep.pkl",
+                "target": "sleep_quality_score",
+                "model": "RandomForestRegressor",
+                "pickle_path": "models/model_sleep_reg.pkl",
+            },
+            {
+                "target": "sleep_quality_score",
+                "model": "LinearRegression",
+                "pickle_path": "models/model_sleep_linear.pkl",
             },
             {
                 "target": "stress_risk",
