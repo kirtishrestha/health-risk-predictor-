@@ -4,6 +4,11 @@ Train health risk models using labeled daily metrics.
 Note: running this script will overwrite previously saved model_*.pkl files
 that may only contain feature names. The labels are heuristically derived in
 ``risk_labeling.py`` and treated as ground truth for supervised training.
+
+The workflow mirrors a standard supervised pipeline: heuristic labels are
+generated, data is split into an 80% stratified training set and a 20%
+stratified test set to simulate unseen days, models are fitted on the training
+portion, and evaluation happens only on the held-out test portion.
 """
 from __future__ import annotations
 
@@ -119,17 +124,21 @@ def train_and_save_model(
     with feature_path.open("wb") as f:
         pickle.dump(feature_cols, f)
 
+    class_counts = y.value_counts().to_dict()
+
     metrics_record = {
         "target": target_col,
         "model": model.__class__.__name__,
         "accuracy": float(acc),
         "macro_f1": float(macro_f1),
-        "roc_auc_macro_ovr": float(roc_auc) if roc_auc is not None else None,
+        "roc_auc_ovr_macro": float(roc_auc) if roc_auc is not None else None,
         "confusion_matrix": cm.tolist(),
+        "labels": encoder.classes_.tolist(),
         "feature_cols": feature_cols,
         "train_size": len(X_train),
         "test_size": len(X_test),
         "dataset_path": str(dataset_path),
+        "class_counts": class_counts,
     }
 
     return metrics_record
@@ -316,6 +325,7 @@ def main() -> None:
         "version": "1.0.0",
         "trained_at": datetime.datetime.now().isoformat(),
         "dataset_path": str(data_path),
+        "train_test_split": {"train_frac": 0.8, "test_frac": 0.2, "stratified": True},
         "models": [
             {
                 "target": "health_risk_level",
