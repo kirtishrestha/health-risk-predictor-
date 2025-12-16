@@ -25,6 +25,9 @@ def compute_sleep_quality_score(df: pd.DataFrame) -> pd.Series:
 
     df_local = df.copy()
 
+    if "total_minutes_asleep" not in df_local and "total_sleep_minutes" not in df_local:
+        return pd.Series(0.0, index=df_local.index)
+
     minutes_asleep = df_local.get("total_minutes_asleep")
     if minutes_asleep is None:
         minutes_asleep = df_local.get("total_sleep_minutes")
@@ -33,8 +36,10 @@ def compute_sleep_quality_score(df: pd.DataFrame) -> pd.Series:
     minutes_asleep = pd.to_numeric(minutes_asleep, errors="coerce")
 
     time_in_bed = df_local.get("total_time_in_bed")
-    if time_in_bed is not None:
-        time_in_bed = pd.to_numeric(time_in_bed, errors="coerce")
+    if time_in_bed is None:
+        time_in_bed = minutes_asleep
+    else:
+        time_in_bed = pd.to_numeric(time_in_bed, errors="coerce").fillna(minutes_asleep)
 
     sleep_efficiency = df_local.get("sleep_efficiency")
     if sleep_efficiency is None:
@@ -54,8 +59,7 @@ def compute_sleep_quality_score(df: pd.DataFrame) -> pd.Series:
 
     # Duration component: full credit in 7–9 hour window, linearly lower outside.
     lower_ideal, upper_ideal, long_sleep_floor = 420, 540, 720
-    duration_component = pd.Series(np.nan, index=df_local.index)
-    duration_component = duration_component.where(False, 0)  # initialize with zeros
+    duration_component = pd.Series(0.0, index=df_local.index)
     duration_component = np.where(
         minutes_asleep.isna(),
         np.nan,
@@ -72,7 +76,7 @@ def compute_sleep_quality_score(df: pd.DataFrame) -> pd.Series:
     duration_component = pd.Series(duration_component, index=df_local.index).clip(0, 100)
 
     # Efficiency component: raw percent with an extra penalty below 85% efficiency.
-    efficiency_component = pd.Series(np.nan, index=df_local.index)
+    efficiency_component = pd.Series(0.0, index=df_local.index)
     efficiency_component = np.where(
         pd.isna(efficiency_pct),
         np.nan,
