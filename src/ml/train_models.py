@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import datetime
@@ -28,11 +27,31 @@ from .risk_labeling import add_risk_labels
 DATA_PATH = Path("data/processed/daily_metrics.csv")
 DATA_PATH_COMBINED = Path("data/processed/daily_metrics_combined.csv")
 MODELS_DIR = Path("models")
+FEATURE_COLS = [
+    "total_steps",
+    "total_distance",
+    "very_active_minutes",
+    "fairly_active_minutes",
+    "lightly_active_minutes",
+    "sedentary_minutes",
+    "calories",
+    "total_minutes_asleep",
+    "total_time_in_bed",
+    "sleep_efficiency",
+    "avg_hr",
+    "max_hr",
+    "min_hr",
+    "active_minutes",
+]
 
 
 def load_data(data_path: Path) -> pd.DataFrame:
     """Load and label the daily metrics data."""
-    df = pd.read_csv(data_path)
+    if not data_path.exists():
+        print(f"Dataset not found at {data_path}. Returning empty dataset.")
+        df = pd.DataFrame(columns=FEATURE_COLS)
+    else:
+        df = pd.read_csv(data_path)
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = add_risk_labels(df)
@@ -204,22 +223,7 @@ def train_and_save_regression(
 
 
 def main() -> None:
-    feature_cols = [
-        "total_steps",
-        "total_distance",
-        "very_active_minutes",
-        "fairly_active_minutes",
-        "lightly_active_minutes",
-        "sedentary_minutes",
-        "calories",
-        "total_minutes_asleep",
-        "total_time_in_bed",
-        "sleep_efficiency",
-        "avg_hr",
-        "max_hr",
-        "min_hr",
-        "active_minutes",
-    ]
+    feature_cols = FEATURE_COLS
 
     combined_path = DATA_PATH_COMBINED
     default_path = DATA_PATH
