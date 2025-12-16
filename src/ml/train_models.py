@@ -1,10 +1,4 @@
-"""
-Train health risk models using labeled daily metrics.
 
-Note: running this script will overwrite previously saved model_*.pkl files
-that may only contain feature names. The labels are heuristically derived in
-``risk_labeling.py`` and treated as ground truth for supervised training.
-"""
 from __future__ import annotations
 
 import datetime
