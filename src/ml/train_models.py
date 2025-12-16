@@ -1,16 +1,4 @@
 
-<<<<<<< HEAD
-=======
-Note: running this script will overwrite previously saved model_*.pkl files
-that may only contain feature names. The labels are heuristically derived in
-``risk_labeling.py`` and treated as ground truth for supervised training.
-
-The workflow mirrors a standard supervised pipeline: heuristic labels are
-generated, data is split into an 80% stratified training set and a 20%
-stratified test set to simulate unseen days, models are fitted on the training
-portion, and evaluation happens only on the held-out test portion.
-"""
->>>>>>> 715076e71fcc656a1f0df6084c22b0a3181265ae
 from __future__ import annotations
 
 import datetime
