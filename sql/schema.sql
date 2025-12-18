@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS daily_sleep (
     id SERIAL PRIMARY KEY,
     user_id TEXT NOT NULL,
+    raw_user_id TEXT NULL,
     date DATE NOT NULL,
     source TEXT NOT NULL DEFAULT 'fitbit',
     sleep_minutes INTEGER NOT NULL,
@@ -14,6 +15,7 @@ CREATE TABLE IF NOT EXISTS daily_sleep (
 CREATE TABLE IF NOT EXISTS daily_activity (
     id SERIAL PRIMARY KEY,
     user_id TEXT NOT NULL,
+    raw_user_id TEXT NULL,
     date DATE NOT NULL,
     source TEXT NOT NULL DEFAULT 'fitbit',
     steps INTEGER NOT NULL,
@@ -26,6 +28,7 @@ CREATE TABLE IF NOT EXISTS daily_activity (
 
 CREATE TABLE IF NOT EXISTS daily_features (
     user_id TEXT NOT NULL,
+    raw_user_id TEXT NULL,
     date DATE NOT NULL,
     source TEXT NOT NULL DEFAULT 'fitbit',
     sleep_minutes INTEGER,
