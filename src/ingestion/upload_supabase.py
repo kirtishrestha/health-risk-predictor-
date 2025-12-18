@@ -40,6 +40,23 @@ def _jsonable(v: Any) -> Any:
     except Exception:
         pass
 
+    # python float -> int if integer-like
+    if isinstance(v, float):
+        return int(v) if v.is_integer() else v
+
+    # numeric strings -> parsed number
+    if isinstance(v, str):
+        stripped = v.strip()
+        try:
+            numeric_value = float(stripped)
+        except ValueError:
+            return v
+
+        if pd.isna(numeric_value):
+            return None
+
+        return int(numeric_value) if numeric_value.is_integer() else numeric_value
+
     # numpy scalar -> python primitive
     if isinstance(v, (np.integer, np.floating, np.bool_)):
         return v.item()
