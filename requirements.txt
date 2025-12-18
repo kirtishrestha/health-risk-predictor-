@@ -6,3 +6,5 @@ psycopg2-binary
 scikit-learn
 python-dotenv
 streamlit
+supabase
+matplotlib

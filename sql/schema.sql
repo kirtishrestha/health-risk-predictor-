@@ -1,68 +1,55 @@
-CREATE TABLE IF NOT EXISTS raw_fitbit_daily_activity (
-    id BIGINT,
-    activity_date DATE,
-    total_steps INTEGER,
-    total_distance DOUBLE PRECISION,
-    very_active_minutes INTEGER,
-    fairly_active_minutes INTEGER,
-    lightly_active_minutes INTEGER,
-    sedentary_minutes INTEGER,
-    calories INTEGER,
-    source TEXT NOT NULL DEFAULT 'fitbit_bella_b'
-);
-
-CREATE TABLE IF NOT EXISTS raw_fitbit_sleep_day (
-    id BIGINT,
-    sleep_date DATE,
-    total_sleep_records INTEGER,
-    total_minutes_asleep INTEGER,
-    total_time_in_bed INTEGER,
-    source TEXT NOT NULL DEFAULT 'fitbit_bella_b'
-);
-
-CREATE TABLE IF NOT EXISTS raw_fitbit_hr_seconds (
-    id BIGINT,
-    ts TIMESTAMP,
-    heart_rate INTEGER,
-    source TEXT NOT NULL DEFAULT 'fitbit_bella_b'
-);
-
-CREATE TABLE IF NOT EXISTS daily_metrics (
-    id BIGINT,
-    date DATE,
-    total_steps INTEGER,
-    total_distance DOUBLE PRECISION,
-    very_active_minutes INTEGER,
-    fairly_active_minutes INTEGER,
-    lightly_active_minutes INTEGER,
-    sedentary_minutes INTEGER,
-    calories INTEGER,
-    total_minutes_asleep INTEGER,
-    total_time_in_bed INTEGER,
+CREATE TABLE IF NOT EXISTS daily_sleep (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    date DATE NOT NULL,
+    source TEXT NOT NULL DEFAULT 'fitbit',
+    sleep_minutes INTEGER NOT NULL,
+    time_in_bed_minutes INTEGER,
+    awakenings_count INTEGER,
     sleep_efficiency DOUBLE PRECISION,
-    avg_hr DOUBLE PRECISION,
-    max_hr INTEGER,
-    min_hr INTEGER,
-    active_minutes INTEGER,
-    source TEXT NOT NULL DEFAULT 'fitbit_bella_b',
-    health_risk_level TEXT,
-    cardiovascular_strain_risk TEXT,
-    sleep_quality_risk TEXT,
-    stress_risk TEXT,
-    PRIMARY KEY (id, date)
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    UNIQUE (user_id, date, source)
 );
 
-CREATE TABLE IF NOT EXISTS public.prediction_logs (
-    id BIGSERIAL PRIMARY KEY,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    source VARCHAR(50),
-    user_id BIGINT,
-    model_health VARCHAR(100),
-    model_cardio VARCHAR(100),
-    model_sleep VARCHAR(100),
-    model_stress VARCHAR(100),
-    predicted_health_risk_level VARCHAR(20),
-    predicted_cardio_risk VARCHAR(20),
-    predicted_sleep_risk VARCHAR(20),
-    predicted_stress_risk VARCHAR(20)
+CREATE TABLE IF NOT EXISTS daily_activity (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    date DATE NOT NULL,
+    source TEXT NOT NULL DEFAULT 'fitbit',
+    steps INTEGER NOT NULL,
+    distance_km DOUBLE PRECISION NOT NULL,
+    active_minutes INTEGER,
+    calories DOUBLE PRECISION,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    UNIQUE (user_id, date, source)
+);
+
+CREATE TABLE IF NOT EXISTS daily_features (
+    user_id TEXT NOT NULL,
+    date DATE NOT NULL,
+    source TEXT NOT NULL DEFAULT 'fitbit',
+    sleep_minutes INTEGER,
+    steps INTEGER,
+    distance_km DOUBLE PRECISION,
+    active_minutes INTEGER,
+    calories DOUBLE PRECISION,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    UNIQUE (user_id, date, source)
+);
+
+CREATE TABLE IF NOT EXISTS monthly_metrics (
+    user_id TEXT NOT NULL,
+    month DATE NOT NULL,
+    source TEXT NOT NULL DEFAULT 'fitbit',
+    avg_sleep_minutes DOUBLE PRECISION,
+    avg_steps DOUBLE PRECISION,
+    avg_distance_km DOUBLE PRECISION,
+    avg_active_minutes DOUBLE PRECISION,
+    total_steps DOUBLE PRECISION,
+    total_distance_km DOUBLE PRECISION,
+    total_active_minutes DOUBLE PRECISION,
+    sleep_days_count INTEGER,
+    activity_days_count INTEGER,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    UNIQUE (user_id, month, source)
 );
