@@ -62,6 +62,11 @@ def upsert_dataframe(client: Client, table: str, df: pd.DataFrame, conflict_colu
         logger.info("No rows to upsert into %s", table)
         return []
 
+    original_len = len(df)
+    df = df.drop_duplicates(subset=list(conflict_columns), keep="last")
+    dedup_len = len(df)
+    logger.info("Removed %d duplicate rows before upsert", original_len - dedup_len)
+
     all_results: List[dict] = []
     for chunk in _chunk_dataframe(df):
         payload = _sanitize_records(chunk.to_dict(orient="records"))
