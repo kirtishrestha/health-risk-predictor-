@@ -126,16 +126,15 @@ def train_model(user_id: str | None = None, source: str = "fitbit", all_users: b
     )
 
     if unique_classes < 2:
-        warning_msg = (
-            "Training skipped: Need at least two classes to train the classifier. "
-            f"Found {unique_classes} unique class with distribution {class_distribution}."
+        logger.warning(
+            "Training skipped due to single-class labels. Class distribution: %s",
+            class_distribution,
         )
-        logger.warning(warning_msg)
 
         METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
         skip_metrics = {
             "skipped": True,
-            "reason": warning_msg,
+            "reason": "Only one class present",
             "class_distribution": class_distribution,
         }
         with METRICS_PATH.open("w", encoding="utf-8") as f:
