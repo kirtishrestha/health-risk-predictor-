@@ -21,17 +21,46 @@ def _merge_daily_features(sleep_df: pd.DataFrame, activity_df: pd.DataFrame) -> 
     sleep_df = sleep_df.copy()
     activity_df = activity_df.copy()
     if sleep_df is None or sleep_df.empty:
-        sleep_df = pd.DataFrame(columns=["user_id", "date", "source", "sleep_minutes"])
+        sleep_df = pd.DataFrame(columns=["user_id", "raw_user_id", "date", "source", "sleep_minutes"])
     if activity_df is None or activity_df.empty:
-        activity_df = pd.DataFrame(columns=["user_id", "date", "source", "steps", "distance_km", "active_minutes", "calories"])
+        activity_df = pd.DataFrame(
+            columns=[
+                "user_id",
+                "raw_user_id",
+                "date",
+                "source",
+                "steps",
+                "distance_km",
+                "active_minutes",
+                "calories",
+            ]
+        )
 
-    merged = pd.merge(
-        activity_df,
-        sleep_df[["user_id", "date", "source", "sleep_minutes"]],
-        on=["user_id", "date", "source"],
-        how="outer",
+    activity_merge = activity_df[
+        ["user_id", "raw_user_id", "date", "source", "steps", "distance_km", "active_minutes", "calories"]
+    ].rename(columns={"raw_user_id": "raw_user_id_activity"})
+    sleep_merge = sleep_df[["user_id", "raw_user_id", "date", "source", "sleep_minutes"]].rename(
+        columns={"raw_user_id": "raw_user_id_sleep"}
     )
+
+    merged = pd.merge(activity_merge, sleep_merge, on=["user_id", "date", "source"], how="outer")
+    merged["raw_user_id"] = merged["raw_user_id_activity"].combine_first(merged["raw_user_id_sleep"])
+    merged = merged.drop(columns=["raw_user_id_activity", "raw_user_id_sleep"])
     merged["created_at"] = pd.Timestamp.utcnow()
+    merged = merged[
+        [
+            "user_id",
+            "raw_user_id",
+            "date",
+            "source",
+            "sleep_minutes",
+            "steps",
+            "distance_km",
+            "active_minutes",
+            "calories",
+            "created_at",
+        ]
+    ]
     return merged
 
 
@@ -46,9 +75,23 @@ def run_etl(raw_dir: str, user_id: str, source: str = "fitbit") -> None:
 
     for dataset in datasets:
         if dataset.kind == "sleep":
-            sleep_frames.append(transform_sleep(dataset.dataframe, user_id=user_id, source=source))
+            sleep_frames.append(
+                transform_sleep(
+                    dataset.dataframe,
+                    user_id=user_id,
+                    source=source,
+                    user_id_override=user_id,
+                )
+            )
         elif dataset.kind == "activity":
-            activity_frames.append(transform_activity(dataset.dataframe, user_id=user_id, source=source))
+            activity_frames.append(
+                transform_activity(
+                    dataset.dataframe,
+                    user_id=user_id,
+                    source=source,
+                    user_id_override=user_id,
+                )
+            )
 
     sleep_df = pd.concat(sleep_frames, ignore_index=True) if sleep_frames else pd.DataFrame()
     activity_df = pd.concat(activity_frames, ignore_index=True) if activity_frames else pd.DataFrame()
