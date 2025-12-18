@@ -32,7 +32,7 @@ def _chunk_dataframe(df: pd.DataFrame, chunk_size: int = 500) -> Iterable[pd.Dat
 
 
 def _jsonable(v: Any) -> Any:
-    """Convert common pandas/numpy/python date types to JSON-serializable primitives."""
+    """Convert common pandas/numpy/python types to JSON-serializable primitives."""
     # NaN / NaT -> None
     try:
         if pd.isna(v):
@@ -40,26 +40,27 @@ def _jsonable(v: Any) -> Any:
     except Exception:
         pass
 
-    # python float -> int if integer-like
-    if isinstance(v, float):
-        return int(v) if v.is_integer() else v
-
-    # numeric strings -> parsed number
-    if isinstance(v, str):
-        stripped = v.strip()
-        try:
-            numeric_value = float(stripped)
-        except ValueError:
-            return v
-
-        if pd.isna(numeric_value):
-            return None
-
-        return int(numeric_value) if numeric_value.is_integer() else numeric_value
-
     # numpy scalar -> python primitive
     if isinstance(v, (np.integer, np.floating, np.bool_)):
-        return v.item()
+        v = v.item()
+
+    # ✅ numeric strings like "327.0" -> 327
+    if isinstance(v, str):
+        s = v.strip()
+        # basic numeric check (handles "123", "123.4", "-10", "-10.0")
+        try:
+            f = float(s)
+            if f.is_integer():
+                return int(f)
+            return f
+        except ValueError:
+            return v  # leave non-numeric strings unchanged
+
+    # ✅ integer-like floats -> int (prevents Postgres integer parse issues)
+    if isinstance(v, float):
+        if v.is_integer():
+            return int(v)
+        return v
 
     # timestamps/dates -> ISO string
     if isinstance(v, (pd.Timestamp, datetime, date)):
