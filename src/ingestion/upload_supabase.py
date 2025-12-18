@@ -62,10 +62,17 @@ def upsert_dataframe(client: Client, table: str, df: pd.DataFrame, conflict_colu
         logger.info("No rows to upsert into %s", table)
         return []
 
+    # ✅ Deduplicate by conflict key to avoid "cannot affect row a second time"
     original_len = len(df)
     df = df.drop_duplicates(subset=list(conflict_columns), keep="last")
-    dedup_len = len(df)
-    logger.info("Removed %d duplicate rows before upsert", original_len - dedup_len)
+    removed = original_len - len(df)
+    if removed > 0:
+        logger.warning(
+            "Removed %d duplicate rows for %s based on conflict key %s",
+            removed,
+            table,
+            ",".join(conflict_columns),
+        )
 
     all_results: List[dict] = []
     for chunk in _chunk_dataframe(df):
