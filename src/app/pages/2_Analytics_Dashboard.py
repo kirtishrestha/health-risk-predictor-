@@ -58,6 +58,13 @@ with card("Filters", "Refine your dashboard view", class_name="filter-card"):
         st.info("No predictions available yet for the selected user and source.")
         st.stop()
 
+    prediction_df = prediction_df.copy()
+    prediction_df["date"] = pd.to_datetime(prediction_df["date"], errors="coerce")
+    prediction_df = prediction_df.dropna(subset=["date"])
+    if prediction_df.empty:
+        st.info("No valid prediction dates available yet for the selected user and source.")
+        st.stop()
+
     min_date = prediction_df["date"].min().date()
     max_date = prediction_df["date"].max().date()
 
@@ -87,14 +94,15 @@ if isinstance(selected_dates, tuple) and len(selected_dates) == 2:
 else:
     start_date = end_date = selected_dates
 
-prediction_df = prediction_df.copy()
-mask = (prediction_df["date"].dt.date >= start_date) & (
-    prediction_df["date"].dt.date <= end_date
-)
+date_series = prediction_df["date"].dt.date
+mask = (date_series >= start_date) & (date_series <= end_date)
 prediction_df = prediction_df.loc[mask].copy()
 
 features_df = load_daily_features(selected_user, selected_source)
 if not features_df.empty:
+    features_df = features_df.copy()
+    features_df["date"] = pd.to_datetime(features_df["date"], errors="coerce")
+    features_df = features_df.dropna(subset=["date"])
     feature_mask = (features_df["date"].dt.date >= start_date) & (
         features_df["date"].dt.date <= end_date
     )
@@ -102,6 +110,9 @@ if not features_df.empty:
 
 monthly_df = load_monthly_metrics(selected_user, selected_source)
 if not monthly_df.empty:
+    monthly_df = monthly_df.copy()
+    monthly_df["month"] = pd.to_datetime(monthly_df["month"], errors="coerce")
+    monthly_df = monthly_df.dropna(subset=["month"])
     monthly_mask = (monthly_df["month"].dt.date >= start_date) & (
         monthly_df["month"].dt.date <= end_date
     )

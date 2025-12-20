@@ -107,3 +107,11 @@ def stream_command_logs(command: list[str], log_key: str) -> Tuple[bool, str]:
 
     return_code = process.wait()
     return return_code == 0, st.session_state[log_key]
+
+
+def run_command(command: list[str]) -> bool:
+    """Run a CLI command and stream logs only to the terminal."""
+
+    process = subprocess.Popen(command)
+    return_code = process.wait()
+    return return_code == 0

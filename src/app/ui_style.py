@@ -13,6 +13,12 @@ def inject_global_css() -> None:
     st.markdown(
         """
         <style>
+        :root {
+            --app-font-size: 17px;
+        }
+        html, body, [class*="css"]  {
+            font-size: var(--app-font-size);
+        }
         .block-container {
             padding-top: 3rem;
             padding-bottom: 4rem;
@@ -22,22 +28,22 @@ def inject_global_css() -> None:
             margin: 0 auto;
         }
         .hrp-title {
-            font-size: 2.25rem;
+            font-size: 2.5rem;
             font-weight: 700;
             margin-bottom: 0.25rem;
         }
         .hrp-subtitle {
-            font-size: 1rem;
+            font-size: 1.1rem;
             color: #6B7280;
             margin-bottom: 2.5rem;
         }
         .section-title {
-            font-size: 1.75rem;
+            font-size: 1.9rem;
             font-weight: 600;
             margin: 3.25rem 0 0.75rem 0;
         }
         .section-subtitle {
-            font-size: 1rem;
+            font-size: 1.05rem;
             color: #6B7280;
             margin-bottom: 2.25rem;
         }
@@ -45,7 +51,7 @@ def inject_global_css() -> None:
             height: 1.5rem;
         }
         .hrp-card {
-            background: #FFFFFF;
+            background: #FFFDF9;
             border: 1px solid rgba(245, 158, 11, 0.16);
             border-radius: 16px;
             padding: 1.25rem 1.5rem;
@@ -61,24 +67,24 @@ def inject_global_css() -> None:
             padding: 1.25rem 1.5rem 0.75rem;
         }
         .card-title {
-            font-size: 1.1rem;
+            font-size: 1.15rem;
             font-weight: 600;
             margin-bottom: 0.25rem;
         }
         .card-subtitle {
-            font-size: 0.95rem;
+            font-size: 1rem;
             color: #6B7280;
             margin-bottom: 1rem;
         }
         .kpi-value {
-            font-size: 2.1rem;
+            font-size: 2.35rem;
             font-weight: 700;
             color: #111827;
             line-height: 1.2;
             margin-top: 0.35rem;
         }
         .kpi-label {
-            font-size: 0.95rem;
+            font-size: 1rem;
             color: #6B7280;
             text-transform: uppercase;
             letter-spacing: 0.04em;
@@ -87,6 +93,27 @@ def inject_global_css() -> None:
             font-size: 0.85rem;
             color: #9CA3AF;
             margin-top: 0.25rem;
+        }
+        .app-button .stButton button {
+            font-size: 1.05rem;
+            padding: 0.6rem 1.1rem;
+            border-radius: 12px;
+        }
+        .action-helper {
+            margin-top: 0.4rem;
+            font-size: 0.95rem;
+            color: #6B7280;
+        }
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 999px;
+            background: rgba(245, 158, 11, 0.15);
+            color: #92400E;
+            font-weight: 600;
+            font-size: 0.9rem;
         }
         .kpi-subtitle {
             color: #6B7280;
@@ -98,6 +125,9 @@ def inject_global_css() -> None:
         [data-testid="stSidebar"] {
             background: #FFFBF5;
             padding-top: 1rem;
+        }
+        [data-testid="stSidebar"] * {
+            font-size: 1.02rem;
         }
         [data-testid="stSidebarNav"] ul {
             gap: 0.25rem;
@@ -138,3 +168,25 @@ def card(
         yield
     finally:
         st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_card(
+    title: str,
+    body: str | None = None,
+    *,
+    subtitle: str | None = None,
+    class_name: str | None = None,
+    body_fn=None,
+) -> None:
+    """Render a styled card with optional body content or callable."""
+
+    extra_class = f" {class_name}" if class_name else ""
+    st.markdown(f'<div class="hrp-card{extra_class}">', unsafe_allow_html=True)
+    st.markdown(f'<div class="card-title">{title}</div>', unsafe_allow_html=True)
+    if subtitle:
+        st.markdown(f'<div class="card-subtitle">{subtitle}</div>', unsafe_allow_html=True)
+    if body_fn:
+        body_fn()
+    elif body:
+        st.markdown(body)
+    st.markdown("</div>", unsafe_allow_html=True)
