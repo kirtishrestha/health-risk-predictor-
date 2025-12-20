@@ -19,7 +19,7 @@ from src.app.ui_predictions import (
 
 st.set_page_config(page_title="Analytics Dashboard", page_icon="📊", layout="wide")
 
-st.title("📊 Analytics Dashboard")
+st.title("Analytics Dashboard")
 st.caption("Personal health analytics from daily predictions and activity insights.")
 
 env_ready, missing = env_ok()

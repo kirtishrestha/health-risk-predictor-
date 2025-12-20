@@ -13,7 +13,7 @@ from src.app.ui_predictions import clear_prediction_cache
 
 st.set_page_config(page_title="Pipeline Runner", page_icon="🚀", layout="wide")
 
-st.title("🚀 Pipeline Runner")
+st.title("Pipeline Runner")
 st.caption(
     "Run the CLI pipeline with streaming logs. Supabase credentials are required for ETL, "
     "training, and inference."
