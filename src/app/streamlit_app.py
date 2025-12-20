@@ -32,4 +32,10 @@ if not env_ready:
         f"Missing: {', '.join(missing)}"
     )
 
+st.markdown("### Pages")
+
+st.page_link("pages/1_Pipeline_Runner.py", label="Pipeline Runner")
+st.page_link("pages/2_Analytics_Dashboard.py", label="Analytics Dashboard")
+st.page_link("pages/3_Legacy_Dashboard.py", label="Legacy Dashboard")
+
 st.caption("Run with `streamlit run src/app/streamlit_app.py`.")
