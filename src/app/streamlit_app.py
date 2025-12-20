@@ -301,6 +301,41 @@ def fetch_daily_features_preview(client, user_id: str, source: str) -> pd.DataFr
         return pd.DataFrame()
 
 
+@st.cache_data(show_spinner=False)
+def load_daily_predictions(user_id: str, source: str) -> pd.DataFrame:
+    """Load daily predictions from Supabase for a specific user/source."""
+
+    client = get_supabase_client()
+    response = (
+        client.table("daily_predictions")
+        .select(
+            ",".join(
+                [
+                    "user_id",
+                    "date",
+                    "source",
+                    "sleep_quality_label",
+                    "sleep_quality_proba",
+                    "activity_quality_label",
+                    "activity_quality_proba",
+                    "created_at",
+                ]
+            )
+        )
+        .eq("user_id", user_id)
+        .eq("source", source)
+        .order("date", desc=False)
+        .execute()
+    )
+    df = pd.DataFrame(response.data or [])
+    if df.empty:
+        return df
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
+    return df.sort_values("date")
+
+
 def add_predictions(
     df: pd.DataFrame, models: Dict[str, object], label_encoders: Dict[str, object], *, health_model_key: str
 ) -> pd.DataFrame:
@@ -556,6 +591,41 @@ def render_dashboard() -> None:
             if error_msg:
                 st.info(f"Error details: {error_msg}")
 
+    st.sidebar.markdown("### Daily Predictions Filters")
+    prediction_source = st.sidebar.text_input(
+        "Prediction source", value="fitbit", key="prediction_source"
+    )
+    prediction_user_id = st.sidebar.text_input(
+        "Prediction user_id", value="demo_user", key="prediction_user_id"
+    )
+    try:
+        prediction_df = load_daily_predictions(prediction_user_id, prediction_source)
+    except Exception:  # pragma: no cover - UI warns about query issues
+        st.warning(
+            "Unable to load Supabase daily_predictions. "
+            "Run: python -m src.ml.run_inference --source fitbit --user_id demo_user"
+        )
+        prediction_df = pd.DataFrame()
+
+    if not prediction_df.empty:
+        min_pred_date = prediction_df["date"].min().date()
+        max_pred_date = prediction_df["date"].max().date()
+        pred_dates = st.sidebar.date_input(
+            "Prediction date range",
+            value=(min_pred_date, max_pred_date),
+            min_value=min_pred_date,
+            max_value=max_pred_date,
+            key="prediction_date_range",
+        )
+        if isinstance(pred_dates, tuple) and len(pred_dates) == 2:
+            pred_start, pred_end = pred_dates
+        else:
+            pred_start = pred_end = pred_dates
+        pred_mask = (prediction_df["date"].dt.date >= pred_start) & (
+            prediction_df["date"].dt.date <= pred_end
+        )
+        prediction_df = prediction_df[pred_mask].copy()
+
     min_date = df["date"].min().date()
     max_date = df["date"].max().date()
     selected_dates = st.sidebar.date_input(
@@ -790,6 +860,40 @@ def render_dashboard() -> None:
         st.caption(
             "RandomForest importance is based on impurity decrease; Logistic Regression importance is based on coefficient magnitude."
         )
+
+    # How to test:
+    # 1) python -m src.ml.run_inference --source fitbit --user_id demo_user
+    # 2) streamlit run src/app/streamlit_app.py
+    # 3) Select user_id=demo_user, source=fitbit and confirm 62 rows shown.
+    st.subheader("Daily Predictions (from Supabase)")
+    if prediction_df.empty:
+        st.info("No daily predictions found for the selected filters.")
+    else:
+        prediction_columns = [
+            "date",
+            "sleep_quality_label",
+            "sleep_quality_proba",
+            "activity_quality_label",
+            "activity_quality_proba",
+        ]
+        for col in prediction_columns:
+            if col not in prediction_df.columns:
+                prediction_df[col] = pd.NA
+        prediction_display = prediction_df[prediction_columns].sort_values("date")
+        st.dataframe(prediction_display.reset_index(drop=True))
+
+        prediction_chart_df = prediction_display.set_index("date")
+        if prediction_chart_df["sleep_quality_proba"].notna().any():
+            st.subheader("Sleep quality probability over time")
+            st.line_chart(prediction_chart_df["sleep_quality_proba"])
+        else:
+            st.info("Sleep quality probabilities not available to plot.")
+
+        if prediction_chart_df["activity_quality_proba"].notna().any():
+            st.subheader("Activity quality probability over time")
+            st.line_chart(prediction_chart_df["activity_quality_proba"])
+        else:
+            st.info("Activity quality probabilities not available to plot.")
 
     st.subheader("Daily Metrics and Predicted Risks")
     st.dataframe(df_pred[available_columns].reset_index(drop=True))
