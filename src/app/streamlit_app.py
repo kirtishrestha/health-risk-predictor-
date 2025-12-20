@@ -18,8 +18,7 @@ st.markdown(
 Welcome! This Streamlit app is split into focused pages for clarity.
 
 ### Quick Start
-1) Use the **sidebar** to navigate to the Pipeline Runner, Analytics Dashboard, or
-   Legacy Dashboard pages.
+1) Use the **sidebar** to navigate to the Pipeline Runner or Analytics Dashboard pages.
 2) Start with **Pipeline Runner** to upload a Fitbit ZIP and run ETL → Train → Inference.
 3) Visit **Analytics Dashboard** to explore daily predictions stored in Supabase.
 """
@@ -36,6 +35,15 @@ st.markdown("### Pages")
 
 st.page_link("pages/1_Pipeline_Runner.py", label="Pipeline Runner")
 st.page_link("pages/2_Analytics_Dashboard.py", label="Analytics Dashboard")
-st.page_link("pages/3_Legacy_Dashboard.py", label="Legacy Dashboard")
+
+with st.sidebar:
+    dev_mode = st.checkbox("Developer mode", value=False)
+    st.session_state["dev_mode"] = dev_mode
+
+if dev_mode:
+    st.page_link(
+        "pages/3_Legacy_Dashboard.py",
+        label="(Deprecated) Legacy Dashboard",
+    )
 
 st.caption("Run with `streamlit run src/app/streamlit_app.py`.")

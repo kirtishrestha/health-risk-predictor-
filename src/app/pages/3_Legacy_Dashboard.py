@@ -12,6 +12,22 @@ import pandas as pd
 import streamlit as st
 
 
+st.set_page_config(
+    page_title="Legacy Dashboard (Deprecated)",
+    page_icon="🧪",
+    layout="wide",
+)
+
+if not st.session_state.get("dev_mode", False):
+    st.info("Legacy Dashboard is hidden. Enable Developer mode in the sidebar to view it.")
+    st.stop()
+
+st.info(
+    "This legacy dashboard is deprecated and maintained for developer reference. "
+    "Use Pipeline Runner and Analytics Dashboard for the production experience."
+)
+st.divider()
+
 REQUIRED_COLUMNS = [
     "id",
     "date",
