@@ -21,15 +21,15 @@ st.set_page_config(
 
 inject_global_css()
 
-if not st.session_state.get("dev_mode", False):
-    st.info("Legacy Dashboard is hidden. Enable Developer mode in the sidebar to view it.")
-    st.stop()
-
-st.info(
-    "This legacy dashboard is deprecated and maintained for developer reference. "
-    "Use Pipeline Runner and Analytics Dashboard for the production experience."
+st.markdown('<div class="hrp-title">Legacy Dashboard</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="hrp-subtitle">Deprecated workflow powered by local CSVs and model artifacts.</div>',
+    unsafe_allow_html=True,
 )
-st.divider()
+st.info(
+    "This legacy dashboard is deprecated and maintained for reference. "
+    "Use Pipeline Runner and Analytics Dashboard for the current experience."
+)
 
 REQUIRED_COLUMNS = [
     "id",
@@ -199,7 +199,11 @@ def interpret_sleep_score(score: float) -> str | float:
 
 
 def add_predictions(
-    df: pd.DataFrame, models: Dict[str, object], label_encoders: Dict[str, object], *, health_model_key: str
+    df: pd.DataFrame,
+    models: Dict[str, object],
+    label_encoders: Dict[str, object],
+    *,
+    health_model_key: str,
 ) -> pd.DataFrame:
     """Generate predictions and append them to the dataframe."""
 
@@ -265,14 +269,10 @@ def add_predictions(
     return df_pred
 
 
-st.set_page_config(page_title="Legacy Dashboard", page_icon="🧰", layout="wide")
-
-st.title("Legacy Dashboard (Deprecated)")
-st.caption("Legacy dashboard (deprecated)")
-st.warning(
-    "This dashboard uses local CSVs and model artifacts. It is deprecated—"
-    "please use the Pipeline Runner and Analytics Dashboard for the current workflow."
-)
+def normalize_date_range(value) -> tuple[pd.Timestamp, pd.Timestamp]:
+    if isinstance(value, tuple) and len(value) == 2:
+        return value[0], value[1]
+    return value, value
 
 df = load_daily_metrics()
 if df.empty:
@@ -297,10 +297,7 @@ selected_dates = st.date_input(
     "Select date range", value=(min_date, max_date), min_value=min_date, max_value=max_date
 )
 
-if isinstance(selected_dates, tuple) and len(selected_dates) == 2:
-    start_date, end_date = selected_dates
-else:
-    start_date = end_date = selected_dates
+start_date, end_date = normalize_date_range(selected_dates)
 
 mask_user = df["id"] == selected_user
 mask_dates = (df["date"].dt.date >= start_date) & (df["date"].dt.date <= end_date)
