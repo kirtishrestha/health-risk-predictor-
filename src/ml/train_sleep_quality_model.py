@@ -136,6 +136,8 @@ def train_model(user_id: str | None = None, source: str = "fitbit", all_users: b
             "skipped": True,
             "reason": "Only one class present",
             "class_distribution": class_distribution,
+            "user_id": user_id,
+            "source": source,
         }
         with METRICS_PATH.open("w", encoding="utf-8") as f:
             json.dump(skip_metrics, f, indent=2)
