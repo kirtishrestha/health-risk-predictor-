@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import os
 import pickle
+import subprocess
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -245,6 +247,75 @@ def load_uploaded_daily_metrics(uploaded_zip) -> Optional[pd.DataFrame]:
     return None
 
 
+def ensure_supabase_env() -> None:
+    """Ensure required Supabase credentials are available."""
+
+    if not os.getenv("SUPABASE_URL") or not os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
+        st.error(
+            "Supabase credentials are missing. Set SUPABASE_URL and "
+            "SUPABASE_SERVICE_ROLE_KEY before using the demo app."
+        )
+        st.stop()
+
+
+def _clear_prediction_cache() -> None:
+    """Clear cached prediction data."""
+
+    load_daily_predictions.clear()
+
+
+def _initialize_upload_state(uploaded_zip) -> None:
+    """Extract a newly uploaded ZIP and store metadata in session state."""
+
+    if uploaded_zip is None:
+        st.session_state.pop("uploaded_zip_name", None)
+        st.session_state.pop("uploaded_zip_dir", None)
+        st.session_state.pop("uploaded_zip_base_dir", None)
+        st.session_state.pop("uploaded_zip_csv_count", None)
+        return
+
+    if st.session_state.get("uploaded_zip_name") == uploaded_zip.name:
+        return
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="fitbit_upload_"))
+    uploaded_zip.seek(0)
+    with zipfile.ZipFile(uploaded_zip) as zip_file:
+        zip_file.extractall(tmp_dir)
+
+    base_dir = find_fitbit_base_dir(tmp_dir)
+    csv_count = len(list(tmp_dir.rglob("*.csv")))
+
+    st.session_state["uploaded_zip_name"] = uploaded_zip.name
+    st.session_state["uploaded_zip_dir"] = str(tmp_dir)
+    st.session_state["uploaded_zip_base_dir"] = str(base_dir) if base_dir else None
+    st.session_state["uploaded_zip_csv_count"] = csv_count
+
+
+def _stream_command_logs(command: list[str], log_key: str) -> Tuple[bool, str]:
+    """Run a CLI command and stream logs into the UI."""
+
+    st.session_state[log_key] = ""
+    placeholder = st.empty()
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    output_lines: list[str] = []
+    if process.stdout:
+        for line in process.stdout:
+            output_lines.append(line.rstrip())
+            st.session_state[log_key] = "\n".join(output_lines)
+            placeholder.code(st.session_state[log_key])
+
+    return_code = process.wait()
+    return return_code == 0, st.session_state[log_key]
+
+
 def get_supabase_client_or_error():
     """Create a Supabase client or report errors in the UI."""
 
@@ -306,28 +377,32 @@ def load_daily_predictions(user_id: str, source: str) -> pd.DataFrame:
     """Load daily predictions from Supabase for a specific user/source."""
 
     client = get_supabase_client()
-    response = (
-        client.table("daily_predictions")
-        .select(
-            ",".join(
-                [
-                    "user_id",
-                    "date",
-                    "source",
-                    "sleep_quality_label",
-                    "sleep_quality_proba",
-                    "activity_quality_label",
-                    "activity_quality_proba",
-                    "created_at",
-                ]
+    try:
+        response = (
+            client.table("daily_predictions")
+            .select(
+                ",".join(
+                    [
+                        "user_id",
+                        "date",
+                        "source",
+                        "sleep_quality_label",
+                        "sleep_quality_proba",
+                        "activity_quality_label",
+                        "activity_quality_proba",
+                        "created_at",
+                    ]
+                )
             )
+            .eq("user_id", user_id)
+            .eq("source", source)
+            .order("date", desc=False)
+            .execute()
         )
-        .eq("user_id", user_id)
-        .eq("source", source)
-        .order("date", desc=False)
-        .execute()
-    )
-    df = pd.DataFrame(response.data or [])
+        df = pd.DataFrame(response.data or [])
+    except Exception as exc:  # pragma: no cover - surface query issues
+        st.error(f"Unable to load daily_predictions: {exc}")
+        return pd.DataFrame()
     if df.empty:
         return df
     if "date" in df.columns:
@@ -477,26 +552,183 @@ def render_dashboard() -> None:
 
     st.title("Fitbit Health Risk Dashboard")
 
+    st.markdown(
+        """
+        <style>
+        .block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
+        [data-testid="stMetric"] { background: #ffffff; padding: 0.75rem; border-radius: 0.75rem;
+            border: 1px solid rgba(79, 70, 229, 0.15); box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05); }
+        .section-header { font-size: 1.25rem; font-weight: 700; margin-top: 1.25rem; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.caption(
         "Models are trained on labeled historical days (labels come from heuristic rules) "
         "and then used to predict risk levels on new, unseen days."
     )
 
+    st.markdown(
+        "#### Quick start\n"
+        "1) Upload a Fitbit ZIP (optional).\n"
+        "2) Run ETL → Train → Inference from the sidebar.\n"
+        "3) Explore predictions and charts below.\n"
+    )
+
+    ensure_supabase_env()
+
+    st.sidebar.markdown("## 🚀 Pipeline Runner")
+    pipeline_user_id = st.sidebar.text_input(
+        "user_id", value="demo_user", key="pipeline_user_id"
+    )
+    pipeline_source = st.sidebar.selectbox(
+        "source",
+        ["fitbit", "fitbit_bella_a", "fitbit_bella_b"],
+        index=0,
+        key="pipeline_source",
+    )
+
+    uploaded_zip = st.sidebar.file_uploader(
+        "Upload Fitbit export ZIP",
+        type=["zip"],
+        accept_multiple_files=False,
+        key="pipeline_zip",
+    )
+    _initialize_upload_state(uploaded_zip)
+
+    base_dir = st.session_state.get("uploaded_zip_base_dir")
+    csv_count = st.session_state.get("uploaded_zip_csv_count")
+    if uploaded_zip is not None:
+        if base_dir:
+            st.sidebar.success(f"Detected base folder: {Path(base_dir).name}")
+            st.sidebar.caption(f"CSV files found: {csv_count}")
+        else:
+            st.sidebar.error("Could not locate Fitbit CSVs inside the ZIP.")
+
+    st.sidebar.caption("Run each step in order. Logs appear below.")
+
+    run_etl_button = st.sidebar.button(
+        "1) Run ETL to Supabase", disabled=base_dir is None
+    )
+    train_button = st.sidebar.button("2) Train Models (All Users)")
+    inference_button = st.sidebar.button("3) Run Inference (This user_id)")
+
     ingest_mode = st.sidebar.radio(
         "Upload handling",
         ["Preview only (in-memory)", "Ingest to Supabase (run ETL)"],
     )
-    ingest_user_id = st.sidebar.text_input("user_id", value="demo_user")
-    ingest_source = st.sidebar.text_input("source", value="fitbit")
-    run_monthly = st.sidebar.checkbox(
-        "Run monthly aggregation after ETL", value=True
+    ingest_user_id = st.sidebar.text_input(
+        "user_id", value=pipeline_user_id, key="ingest_user_id"
     )
-
-    uploaded_zip = st.sidebar.file_uploader(
-        "Upload your Fitbit export ZIP", type=["zip"], accept_multiple_files=False
+    ingest_source = st.sidebar.text_input(
+        "source", value=pipeline_source, key="ingest_source"
     )
+    run_monthly = st.sidebar.checkbox("Run monthly aggregation after ETL", value=True)
 
     using_uploaded = uploaded_zip is not None and ingest_mode == "Preview only (in-memory)"
+
+    st.markdown('<div class="section-header">Pipeline logs</div>', unsafe_allow_html=True)
+    pipeline_log_container = st.container()
+
+    if run_etl_button:
+        if base_dir is None:
+            st.error("ETL requires an uploaded Fitbit ZIP. Please upload a ZIP first.")
+        else:
+            etl_command = [
+                sys.executable,
+                "-m",
+                "src.pipeline.run_etl",
+                "--raw_dir",
+                base_dir,
+                "--user_id",
+                pipeline_user_id,
+                "--source",
+                pipeline_source,
+            ]
+            with pipeline_log_container:
+                st.subheader("ETL logs")
+                success, _ = _stream_command_logs(etl_command, "etl_log")
+            if success:
+                st.success("ETL completed successfully.")
+            else:
+                st.error("ETL failed. Check logs above.")
+
+    if train_button:
+        sleep_command = [
+            sys.executable,
+            "-m",
+            "src.ml.train_sleep_quality_model",
+            "--source",
+            pipeline_source,
+            "--all_users",
+        ]
+        activity_command = [
+            sys.executable,
+            "-m",
+            "src.ml.train_activity_quality_model",
+            "--source",
+            pipeline_source,
+            "--all_users",
+        ]
+        with pipeline_log_container:
+            st.subheader("Sleep model training logs")
+            sleep_success, _ = _stream_command_logs(
+                sleep_command, "train_sleep_log"
+            )
+            st.subheader("Activity model training logs")
+            activity_success, _ = _stream_command_logs(
+                activity_command, "train_activity_log"
+            )
+        if sleep_success and activity_success:
+            st.success("All model training runs completed successfully.")
+        else:
+            st.warning(
+                "Training completed with errors. Review the logs for details."
+            )
+
+    if inference_button:
+        inference_command = [
+            sys.executable,
+            "-m",
+            "src.ml.run_inference",
+            "--source",
+            pipeline_source,
+            "--user_id",
+            pipeline_user_id,
+        ]
+        with pipeline_log_container:
+            st.subheader("Inference logs")
+            inference_success, _ = _stream_command_logs(
+                inference_command, "inference_log"
+            )
+        if inference_success:
+            st.success("Inference completed successfully.")
+            _clear_prediction_cache()
+            st.session_state["force_refresh"] = True
+        else:
+            st.error("Inference failed. Check logs above.")
+
+    if st.session_state.get("etl_log"):
+        with pipeline_log_container:
+            st.subheader("ETL logs (last run)")
+            st.code(st.session_state.get("etl_log", ""))
+    if st.session_state.get("train_sleep_log"):
+        with pipeline_log_container:
+            st.subheader("Sleep model training logs (last run)")
+            st.code(st.session_state.get("train_sleep_log", ""))
+    if st.session_state.get("train_activity_log"):
+        with pipeline_log_container:
+            st.subheader("Activity model training logs (last run)")
+            st.code(st.session_state.get("train_activity_log", ""))
+    if st.session_state.get("inference_log"):
+        with pipeline_log_container:
+            st.subheader("Inference logs (last run)")
+            st.code(st.session_state.get("inference_log", ""))
+
+    if st.session_state.get("force_refresh"):
+        st.session_state["force_refresh"] = False
+        st.rerun()
 
     if using_uploaded:
         st.sidebar.info("Processing only the data inside your uploaded ZIP (kept in-memory).")
@@ -593,20 +825,17 @@ def render_dashboard() -> None:
 
     st.sidebar.markdown("### Daily Predictions Filters")
     prediction_source = st.sidebar.text_input(
-        "Prediction source", value="fitbit", key="prediction_source"
+        "Prediction source", value=pipeline_source, key="prediction_source"
     )
     prediction_user_id = st.sidebar.text_input(
-        "Prediction user_id", value="demo_user", key="prediction_user_id"
+        "Prediction user_id", value=pipeline_user_id, key="prediction_user_id"
     )
-    try:
-        prediction_df = load_daily_predictions(prediction_user_id, prediction_source)
-    except Exception:  # pragma: no cover - UI warns about query issues
-        st.warning(
-            "Unable to load Supabase daily_predictions. "
-            "Run: python -m src.ml.run_inference --source fitbit --user_id demo_user"
-        )
-        prediction_df = pd.DataFrame()
+    if st.sidebar.button("Refresh predictions"):
+        _clear_prediction_cache()
 
+    prediction_df = load_daily_predictions(prediction_user_id, prediction_source)
+
+    pred_start = pred_end = None
     if not prediction_df.empty:
         min_pred_date = prediction_df["date"].min().date()
         max_pred_date = prediction_df["date"].max().date()
@@ -621,10 +850,6 @@ def render_dashboard() -> None:
             pred_start, pred_end = pred_dates
         else:
             pred_start = pred_end = pred_dates
-        pred_mask = (prediction_df["date"].dt.date >= pred_start) & (
-            prediction_df["date"].dt.date <= pred_end
-        )
-        prediction_df = prediction_df[pred_mask].copy()
 
     min_date = df["date"].min().date()
     max_date = df["date"].max().date()
@@ -865,35 +1090,102 @@ def render_dashboard() -> None:
     # 1) python -m src.ml.run_inference --source fitbit --user_id demo_user
     # 2) streamlit run src/app/streamlit_app.py
     # 3) Select user_id=demo_user, source=fitbit and confirm 62 rows shown.
-    st.subheader("Daily Predictions (from Supabase)")
+    st.markdown('<div class="section-header">📊 Predictions Explorer</div>', unsafe_allow_html=True)
     if prediction_df.empty:
-        st.info("No daily predictions found for the selected filters.")
+        st.info(
+            "No daily predictions found for the selected filters. "
+            "Run inference from the sidebar to populate this table."
+        )
     else:
+        if pred_start and pred_end:
+            pred_mask = (prediction_df["date"].dt.date >= pred_start) & (
+                prediction_df["date"].dt.date <= pred_end
+            )
+            prediction_df = prediction_df[pred_mask].copy()
+
+        prediction_df = prediction_df.sort_values("date")
+        total_days = len(prediction_df)
+        activity_share = pd.to_numeric(
+            prediction_df["activity_quality_label"], errors="coerce"
+        )
+        sleep_share = pd.to_numeric(
+            prediction_df["sleep_quality_label"], errors="coerce"
+        )
+        activity_good_pct = (
+            activity_share.eq(1).mean() * 100 if activity_share.notna().any() else 0.0
+        )
+        sleep_good_pct = (
+            sleep_share.eq(1).mean() * 100 if sleep_share.notna().any() else 0.0
+        )
+        date_range = (
+            f"{prediction_df['date'].min().date()} → {prediction_df['date'].max().date()}"
+        )
+
+        kpi_cols = st.columns(4)
+        kpi_cols[0].metric("Total days predicted", f"{total_days}")
+        kpi_cols[1].metric("Good activity days", f"{activity_good_pct:.0f}%")
+        kpi_cols[2].metric("Good sleep days", f"{sleep_good_pct:.0f}%")
+        kpi_cols[3].metric("Date range", date_range)
+
+        chart_df = prediction_df.set_index("date")
+        activity_chart = chart_df[["activity_quality_proba"]].copy()
+        sleep_chart = chart_df[["sleep_quality_proba"]].copy()
+        if len(chart_df) >= 7:
+            activity_chart["activity_quality_proba_7d_avg"] = activity_chart[
+                "activity_quality_proba"
+            ].rolling(7).mean()
+            sleep_chart["sleep_quality_proba_7d_avg"] = sleep_chart[
+                "sleep_quality_proba"
+            ].rolling(7).mean()
+
+        st.subheader("Activity quality probability")
+        if activity_chart.notna().any().any():
+            st.line_chart(activity_chart)
+        else:
+            st.info("Activity probabilities not available to plot.")
+
+        st.subheader("Sleep quality probability")
+        if sleep_chart.notna().any().any():
+            st.line_chart(sleep_chart)
+        else:
+            st.info("Sleep probabilities not available to plot.")
+
+        label_counts = pd.DataFrame(
+            {
+                "activity": prediction_df["activity_quality_label"]
+                .value_counts(dropna=True)
+                .sort_index(),
+                "sleep": prediction_df["sleep_quality_label"]
+                .value_counts(dropna=True)
+                .sort_index(),
+            }
+        ).fillna(0)
+        st.subheader("Label distribution")
+        if not label_counts.empty:
+            st.bar_chart(label_counts)
+        else:
+            st.info("No label distribution data available.")
+
         prediction_columns = [
             "date",
             "sleep_quality_label",
             "sleep_quality_proba",
             "activity_quality_label",
             "activity_quality_proba",
+            "created_at",
         ]
         for col in prediction_columns:
             if col not in prediction_df.columns:
                 prediction_df[col] = pd.NA
-        prediction_display = prediction_df[prediction_columns].sort_values("date")
-        st.dataframe(prediction_display.reset_index(drop=True))
-
-        prediction_chart_df = prediction_display.set_index("date")
-        if prediction_chart_df["sleep_quality_proba"].notna().any():
-            st.subheader("Sleep quality probability over time")
-            st.line_chart(prediction_chart_df["sleep_quality_proba"])
-        else:
-            st.info("Sleep quality probabilities not available to plot.")
-
-        if prediction_chart_df["activity_quality_proba"].notna().any():
-            st.subheader("Activity quality probability over time")
-            st.line_chart(prediction_chart_df["activity_quality_proba"])
-        else:
-            st.info("Activity quality probabilities not available to plot.")
+        prediction_display = prediction_df[prediction_columns].copy()
+        st.dataframe(prediction_display.reset_index(drop=True), use_container_width=True)
+        csv_bytes = prediction_display.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download predictions CSV",
+            data=csv_bytes,
+            file_name="daily_predictions.csv",
+            mime="text/csv",
+        )
 
     st.subheader("Daily Metrics and Predicted Risks")
     st.dataframe(df_pred[available_columns].reset_index(drop=True))
