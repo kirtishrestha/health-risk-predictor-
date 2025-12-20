@@ -8,11 +8,13 @@ import streamlit as st
 
 from src.app.ui_predictions import (
     clear_features_cache,
+    clear_daily_sleep_cache,
     clear_monthly_metrics_cache,
     clear_prediction_cache,
     clear_prediction_options_cache,
     env_ok,
     load_daily_features,
+    load_daily_sleep,
     load_daily_predictions,
     load_monthly_metrics,
     load_prediction_options,
@@ -74,6 +76,7 @@ with card("Filters", "Refine the dashboard view"):
         if st.button("Refresh"):
             clear_prediction_cache()
             clear_features_cache()
+            clear_daily_sleep_cache()
             clear_prediction_options_cache()
             clear_monthly_metrics_cache()
             st.rerun()
@@ -99,6 +102,13 @@ if not features_df.empty:
         features_df["date"].dt.date <= end_date
     )
     features_df = features_df.loc[feature_mask].copy()
+
+sleep_df = load_daily_sleep(selected_user, selected_source)
+if not sleep_df.empty:
+    sleep_mask = (sleep_df["date"].dt.date >= start_date) & (
+        sleep_df["date"].dt.date <= end_date
+    )
+    sleep_df = sleep_df.loc[sleep_mask].copy()
 
 monthly_df = load_monthly_metrics(selected_user, selected_source)
 if not monthly_df.empty:
@@ -226,58 +236,142 @@ if granularity != "Daily":
         .reset_index()
     )
 
-trend_cols = st.columns(2)
-with trend_cols[0]:
-    with card("Sleep probability trend", "Daily values with 7-day rolling average"):
-        sleep_chart = (
-            alt.Chart(trend_df)
-            .transform_fold(
-                ["sleep_proba", "sleep_rolling"],
-                as_=["series", "value"],
-            )
-            .mark_line(point=True)
-            .encode(
-                x=alt.X("date:T", title=None),
-                y=alt.Y("value:Q", title="Probability", scale=alt.Scale(domain=[0, 1])),
-                color=alt.Color(
-                    "series:N",
-                    scale=alt.Scale(
-                        domain=["sleep_proba", "sleep_rolling"],
-                        range=["#4C78A8", "#72B7B2"],
-                    ),
-                    legend=alt.Legend(title=None),
-                ),
-                tooltip=["date:T", "value:Q"],
-            )
-            .properties(height=280)
-        )
-        st.altair_chart(sleep_chart, use_container_width=True)
+if not trend_df.empty and (
+    trend_df["sleep_proba"].notna().any() or trend_df["activity_proba"].notna().any()
+):
+    trend_cols = st.columns(2)
+    with trend_cols[0]:
+        with card("Sleep probability trend", "Daily values with 7-day rolling average"):
+            if trend_df["sleep_proba"].notna().any():
+                sleep_chart = (
+                    alt.Chart(trend_df)
+                    .transform_fold(
+                        ["sleep_proba", "sleep_rolling"],
+                        as_=["series", "value"],
+                    )
+                    .mark_line(point=True)
+                    .encode(
+                        x=alt.X("date:T", title=None),
+                        y=alt.Y(
+                            "value:Q",
+                            title="Probability",
+                            scale=alt.Scale(domain=[0, 1]),
+                        ),
+                        color=alt.Color(
+                            "series:N",
+                            scale=alt.Scale(
+                                domain=["sleep_proba", "sleep_rolling"],
+                                range=["#4C78A8", "#72B7B2"],
+                            ),
+                            legend=alt.Legend(title=None),
+                        ),
+                        tooltip=["date:T", "value:Q"],
+                    )
+                    .properties(height=280)
+                )
+                st.altair_chart(sleep_chart, use_container_width=True)
+            else:
+                st.info("No sleep probability data for the selected range.")
 
-with trend_cols[1]:
-    with card("Activity probability trend", "Daily values with 7-day rolling average"):
-        activity_chart = (
-            alt.Chart(trend_df)
-            .transform_fold(
-                ["activity_proba", "activity_rolling"],
-                as_=["series", "value"],
-            )
-            .mark_line(point=True)
+    with trend_cols[1]:
+        with card(
+            "Activity probability trend",
+            "Daily values with 7-day rolling average",
+        ):
+            if trend_df["activity_proba"].notna().any():
+                activity_chart = (
+                    alt.Chart(trend_df)
+                    .transform_fold(
+                        ["activity_proba", "activity_rolling"],
+                        as_=["series", "value"],
+                    )
+                    .mark_line(point=True)
+                    .encode(
+                        x=alt.X("date:T", title=None),
+                        y=alt.Y(
+                            "value:Q",
+                            title="Probability",
+                            scale=alt.Scale(domain=[0, 1]),
+                        ),
+                        color=alt.Color(
+                            "series:N",
+                            scale=alt.Scale(
+                                domain=["activity_proba", "activity_rolling"],
+                                range=["#F58518", "#E45756"],
+                            ),
+                            legend=alt.Legend(title=None),
+                        ),
+                        tooltip=["date:T", "value:Q"],
+                    )
+                    .properties(height=280)
+                )
+                st.altair_chart(activity_chart, use_container_width=True)
+            else:
+                st.info("No activity probability data for the selected range.")
+else:
+    with card("Daily trend data"):
+        st.info(
+            "No probability trends available for the selected range. "
+            "Run inference to generate daily predictions."
+        )
+
+sleep_anchor = prediction_df[["user_id", "source", "date"]].drop_duplicates()
+if sleep_df.empty:
+    sleep_sleep_df = pd.DataFrame(
+        columns=["user_id", "source", "date", "sleep_minutes_daily_sleep"]
+    )
+else:
+    sleep_sleep_df = sleep_df.rename(
+        columns={"sleep_minutes": "sleep_minutes_daily_sleep"}
+    )
+
+if features_df.empty:
+    sleep_feature_df = pd.DataFrame(
+        columns=["user_id", "source", "date", "sleep_minutes_daily_features"]
+    )
+else:
+    sleep_feature_df = features_df[
+        ["user_id", "source", "date", "sleep_minutes"]
+    ].rename(columns={"sleep_minutes": "sleep_minutes_daily_features"})
+
+sleep_merged = (
+    sleep_anchor.merge(sleep_sleep_df, on=["user_id", "source", "date"], how="left")
+    .merge(sleep_feature_df, on=["user_id", "source", "date"], how="left")
+    .sort_values("date")
+)
+sleep_merged["sleep_minutes"] = pd.to_numeric(
+    sleep_merged["sleep_minutes_daily_sleep"], errors="coerce"
+).fillna(
+    pd.to_numeric(sleep_merged["sleep_minutes_daily_features"], errors="coerce")
+)
+sleep_chart_df = sleep_merged.dropna(subset=["sleep_minutes"]).copy()
+if granularity != "Daily" and not sleep_chart_df.empty:
+    freq = "W-MON" if granularity == "Weekly" else "MS"
+    sleep_chart_df = (
+        sleep_chart_df.set_index("date")
+        .resample(freq)
+        .mean(numeric_only=True)
+        .reset_index()
+    )
+
+with card("Sleep duration", "Daily minutes asleep from Supabase sleep tables"):
+    if sleep_chart_df.empty:
+        st.info(
+            "No sleep minutes data available for this selection. "
+            "Run inference or sync sleep data to populate this chart."
+        )
+    else:
+        sleep_minutes_chart = (
+            alt.Chart(sleep_chart_df)
+            .mark_line(point=True, color="#4C78A8")
             .encode(
                 x=alt.X("date:T", title=None),
-                y=alt.Y("value:Q", title="Probability", scale=alt.Scale(domain=[0, 1])),
-                color=alt.Color(
-                    "series:N",
-                    scale=alt.Scale(
-                        domain=["activity_proba", "activity_rolling"],
-                        range=["#F58518", "#E45756"],
-                    ),
-                    legend=alt.Legend(title=None),
-                ),
-                tooltip=["date:T", "value:Q"],
+                y=alt.Y("sleep_minutes:Q", title="Minutes asleep"),
+                tooltip=["date:T", "sleep_minutes:Q"],
             )
             .properties(height=280)
         )
-        st.altair_chart(activity_chart, use_container_width=True)
+        st.altair_chart(sleep_minutes_chart, use_container_width=True)
 
 if granularity == "Monthly":
     with card("Monthly metrics", "Aggregated from monthly_metrics"):
