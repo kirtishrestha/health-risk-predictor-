@@ -182,53 +182,63 @@ def _run_inference(source: str, user_id: str | None, all_users: bool) -> int:
         logger.info("No rows found for inference; exiting.")
         return 0
 
+    total_rows = len(data)
     merged = data.merge(
         sleep_data[["user_id", "date", "source", "sleep_efficiency", "awakenings_count"]],
         on=["user_id", "date", "source"],
         how="left",
     )
 
-    total_rows = len(merged)
-    sleep_required = merged[["sleep_efficiency", "awakenings_count"]]
-    sleep_valid_mask = sleep_required.notna().all(axis=1)
-    skipped_sleep_rows = int((~sleep_valid_mask).sum())
-    logger.info("Total rows for inference: %d", total_rows)
-    logger.info("Rows skipped for sleep inference due to missing fields: %d", skipped_sleep_rows)
+    sleep_rows = int(merged["sleep_efficiency"].notna().sum())
+    missing_sleep_rows = total_rows - sleep_rows
+    logger.info(
+        "Sleep coverage: total=%d, has_sleep_fields=%d, missing_sleep_fields=%d",
+        total_rows,
+        sleep_rows,
+        missing_sleep_rows,
+    )
 
-    sleep_features = merged.loc[sleep_valid_mask, SLEEP_FEATURE_COLUMNS].fillna(0.0)
+    merged = _ensure_columns(merged, SLEEP_FEATURE_COLUMNS)
+    sleep_efficiency_median = merged["sleep_efficiency"].median(skipna=True)
+    if pd.isna(sleep_efficiency_median):
+        sleep_efficiency_median = 0.0
+    awakenings_median = merged["awakenings_count"].median(skipna=True)
+    if pd.isna(awakenings_median):
+        awakenings_median = 0
+    merged["sleep_efficiency"] = merged["sleep_efficiency"].fillna(sleep_efficiency_median)
+    merged["awakenings_count"] = merged["awakenings_count"].fillna(awakenings_median)
+
+    sleep_features = merged[SLEEP_FEATURE_COLUMNS].fillna(0.0)
     activity_features = merged[FEATURE_COLUMNS].fillna(0.0)
     logger.info("Sleep inference columns: %s", list(sleep_features.columns))
 
     activity_labels, activity_proba = _predict_with_model(activity_model, activity_features)
-    sleep_labels: np.ndarray
-    sleep_proba: np.ndarray | None
-    if sleep_valid_mask.any():
-        sleep_labels, sleep_proba = _predict_with_model(sleep_model, sleep_features)
-    else:
-        sleep_labels = np.array([])
-        sleep_proba = None
+    sleep_labels, sleep_proba = _predict_with_model(sleep_model, sleep_features)
 
     _log_label_distribution("sleep_quality", sleep_labels)
     _log_label_distribution("activity_quality", activity_labels)
 
     results = merged[["user_id", "date", "source"]].copy()
-    results["sleep_quality_label"] = None
-    results["sleep_quality_proba"] = None
-    if sleep_valid_mask.any():
-        results.loc[sleep_valid_mask, "sleep_quality_label"] = sleep_labels.astype(int)
-        if sleep_proba is not None:
-            results.loc[sleep_valid_mask, "sleep_quality_proba"] = sleep_proba
+    results["sleep_quality_label"] = sleep_labels.astype(int)
+    results["sleep_quality_proba"] = sleep_proba if sleep_proba is not None else None
     results["activity_quality_label"] = activity_labels.astype(int)
     results["activity_quality_proba"] = activity_proba if activity_proba is not None else None
     results["created_at"] = datetime.now(timezone.utc)
 
     client = get_supabase_client()
     upsert_func: Callable[..., list[dict]]
-    if _upsert_dataframe is not None:
-        upsert_func = _upsert_dataframe
-        upserted = upsert_func(client, "daily_predictions", results, ["user_id", "date", "source"])
-    else:
-        upserted = _local_upsert(client, "daily_predictions", results, ["user_id", "date", "source"])
+    try:
+        if _upsert_dataframe is not None:
+            upsert_func = _upsert_dataframe
+            upserted = upsert_func(client, "daily_predictions", results, ["user_id", "date", "source"])
+        else:
+            upserted = _local_upsert(client, "daily_predictions", results, ["user_id", "date", "source"])
+    except Exception as exc:
+        message = (
+            "Failed to upsert into daily_predictions. Ensure the table exists by running the SQL in "
+            "sql/schema.sql."
+        )
+        raise RuntimeError(message) from exc
 
     logger.info("Upserted %d rows into daily_predictions", len(upserted))
     return len(upserted)
