@@ -2,15 +2,15 @@
   "best_model": "random_forest",
   "metrics": {
     "logistic_regression": {
-      "accuracy": 0.9333333333333333,
-      "precision": 0.9280575539568345,
+      "accuracy": 0.93,
+      "precision": 0.9214285714285714,
       "recall": 0.9280575539568345,
-      "f1": 0.9280575539568345,
-      "roc_auc": 0.986952053264221,
+      "f1": 0.9247311827956989,
+      "roc_auc": 0.9867286295187453,
       "confusion_matrix": [
         [
-          151,
-          10
+          150,
+          11
         ],
         [
           10,
