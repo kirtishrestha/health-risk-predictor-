@@ -251,7 +251,7 @@ st.set_page_config(page_title="Legacy Dashboard", page_icon="🧰", layout="wide
 st.title("🧰 Legacy Dashboard (Deprecated)")
 st.warning(
     "This dashboard uses local CSVs and model artifacts. It is deprecated—"
-    "please use the Pipeline Runner and Predictions Explorer for the current workflow."
+    "please use the Pipeline Runner and Analytics Dashboard for the current workflow."
 )
 
 df = load_daily_metrics()
