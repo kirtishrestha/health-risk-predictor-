@@ -16,10 +16,13 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine
 
-from src.etl.pandas_metrics import (
-    build_daily_metrics_pandas,
-    find_fitbit_base_dir,
+from src.aggregation.monthly_aggregate import run_monthly_aggregation
+from src.etl.pandas_metrics import build_daily_metrics_pandas, find_fitbit_base_dir
+from src.ingestion.upload_supabase import (
+    SupabaseConfigError,
+    get_supabase_client,
 )
+from src.pipeline.run_etl import run_etl
 
 
 REQUIRED_COLUMNS = [
@@ -242,6 +245,62 @@ def load_uploaded_daily_metrics(uploaded_zip) -> Optional[pd.DataFrame]:
     return None
 
 
+def get_supabase_client_or_error():
+    """Create a Supabase client or report errors in the UI."""
+
+    try:
+        return get_supabase_client()
+    except SupabaseConfigError as exc:
+        st.error(
+            "Supabase credentials are missing. "
+            "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before running ingestion."
+        )
+        st.info(str(exc))
+    except Exception as exc:  # pragma: no cover - display unexpected Supabase failures
+        st.error(f"Unable to initialize Supabase client: {exc}")
+    return None
+
+
+def fetch_supabase_counts(client, user_id: str, source: str) -> Dict[str, int | None]:
+    """Fetch row counts for key tables filtered by user_id/source."""
+
+    tables = ["daily_activity", "daily_sleep", "daily_features", "monthly_metrics"]
+    counts: Dict[str, int | None] = {}
+    for table in tables:
+        try:
+            response = (
+                client.table(table)
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .eq("source", source)
+                .execute()
+            )
+            counts[table] = response.count
+        except Exception as exc:  # pragma: no cover - surface query issues
+            st.error(f"Failed to fetch count for {table}: {exc}")
+            counts[table] = None
+    return counts
+
+
+def fetch_daily_features_preview(client, user_id: str, source: str) -> pd.DataFrame:
+    """Fetch a preview of daily_features rows after ingestion."""
+
+    try:
+        response = (
+            client.table("daily_features")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("source", source)
+            .order("date", desc=True)
+            .limit(5)
+            .execute()
+        )
+        return pd.DataFrame(response.data or [])
+    except Exception as exc:  # pragma: no cover - surface query issues
+        st.error(f"Failed to load daily_features preview: {exc}")
+        return pd.DataFrame()
+
+
 def add_predictions(
     df: pd.DataFrame, models: Dict[str, object], label_encoders: Dict[str, object], *, health_model_key: str
 ) -> pd.DataFrame:
@@ -388,11 +447,21 @@ def render_dashboard() -> None:
         "and then used to predict risk levels on new, unseen days."
     )
 
+    ingest_mode = st.sidebar.radio(
+        "Upload handling",
+        ["Preview only (in-memory)", "Ingest to Supabase (run ETL)"],
+    )
+    ingest_user_id = st.sidebar.text_input("user_id", value="demo_user")
+    ingest_source = st.sidebar.text_input("source", value="fitbit")
+    run_monthly = st.sidebar.checkbox(
+        "Run monthly aggregation after ETL", value=True
+    )
+
     uploaded_zip = st.sidebar.file_uploader(
         "Upload your Fitbit export ZIP", type=["zip"], accept_multiple_files=False
     )
-    # Uploaded data is extracted into a temporary folder and kept in-memory only.
-    using_uploaded = uploaded_zip is not None
+
+    using_uploaded = uploaded_zip is not None and ingest_mode == "Preview only (in-memory)"
 
     if using_uploaded:
         st.sidebar.info("Processing only the data inside your uploaded ZIP (kept in-memory).")
@@ -425,6 +494,67 @@ def render_dashboard() -> None:
 
     user_ids = sorted(df["id"].unique())
     selected_user = st.sidebar.selectbox("Select user ID", user_ids)
+
+    if uploaded_zip is not None and ingest_mode == "Ingest to Supabase (run ETL)":
+        st.subheader("Supabase ingestion")
+        st.write(
+            "Upload a Fitbit ZIP and run the ETL pipeline to load canonical tables into Supabase."
+        )
+        if st.button("Run ETL", type="primary"):
+            with st.spinner("Running ETL..."):
+                try:
+                    supabase_client = get_supabase_client_or_error()
+                    if supabase_client is None:
+                        raise RuntimeError("Supabase client unavailable.")
+
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        tmp_path = Path(tmpdir)
+                        uploaded_zip.seek(0)
+                        with zipfile.ZipFile(uploaded_zip) as zip_file:
+                            zip_file.extractall(tmp_path)
+
+                        base_dir = find_fitbit_base_dir(tmp_path)
+                        if base_dir is None:
+                            raise ValueError(
+                                "Could not locate Fitbit CSVs inside the ZIP. "
+                                "Ensure it contains the Fitabase export folder with "
+                                "dailyActivity_merged.csv or sleepDay_merged.csv."
+                            )
+
+                        run_etl(raw_dir=str(base_dir), user_id=ingest_user_id, source=ingest_source)
+
+                    if run_monthly:
+                        run_monthly_aggregation(user_id=ingest_user_id, source=ingest_source)
+
+                    st.session_state["etl_status"] = "success"
+                except Exception as exc:  # pragma: no cover - surface ETL issues
+                    st.session_state["etl_status"] = "failed"
+                    st.session_state["etl_error"] = str(exc)
+
+        status = st.session_state.get("etl_status")
+        if status == "success":
+            st.success("ETL succeeded.")
+            supabase_client = get_supabase_client_or_error()
+            if supabase_client is not None:
+                counts = fetch_supabase_counts(
+                    supabase_client, ingest_user_id, ingest_source
+                )
+                st.write("Supabase row counts (filtered by user_id/source):")
+                st.json(counts)
+
+                st.write("daily_features preview (first 5 rows):")
+                preview_df = fetch_daily_features_preview(
+                    supabase_client, ingest_user_id, ingest_source
+                )
+                if preview_df.empty:
+                    st.info("No daily_features rows found for the selected user/source.")
+                else:
+                    st.dataframe(preview_df)
+        elif status == "failed":
+            st.error("ETL failed.")
+            error_msg = st.session_state.get("etl_error")
+            if error_msg:
+                st.info(f"Error details: {error_msg}")
 
     min_date = df["date"].min().date()
     max_date = df["date"].max().date()
