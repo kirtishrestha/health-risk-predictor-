@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import altair as alt
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 from src.app.ui_predictions import (
@@ -46,6 +47,35 @@ user_options = options["user_ids"]
 source_options = options["sources"]
 
 
+def normalize_date_range(value) -> tuple[pd.Timestamp, pd.Timestamp]:
+    if isinstance(value, tuple) and len(value) == 2:
+        return value[0], value[1]
+    return value, value
+
+
+def kpi_card(title: str, value: str, sub: str = "") -> str:
+    sub_html = f'<div class="kpi-context">{sub}</div>' if sub else ""
+    return f"""
+        <div class="hrp-card kpi-card">
+            <div class="kpi-label">{title}</div>
+            <div class="kpi-value">{value}</div>
+            {sub_html}
+        </div>
+    """
+
+
+def section_card(title: str, body: str) -> None:
+    st.markdown(
+        f"""
+        <div class="hrp-card">
+            <div class="card-title">{title}</div>
+            <div class="card-subtitle">{body}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 with card("Filters", "Refine your dashboard view", class_name="filter-card"):
     filter_cols = st.columns([2, 2, 3, 2.2, 1])
     with filter_cols[0]:
@@ -61,12 +91,13 @@ with card("Filters", "Refine your dashboard view", class_name="filter-card"):
     prediction_df = prediction_df.copy()
     prediction_df["date"] = pd.to_datetime(prediction_df["date"], errors="coerce")
     prediction_df = prediction_df.dropna(subset=["date"])
+    prediction_df["date_only"] = prediction_df["date"].dt.date
     if prediction_df.empty:
         st.info("No valid prediction dates available yet for the selected user and source.")
         st.stop()
 
-    min_date = prediction_df["date"].min().date()
-    max_date = prediction_df["date"].max().date()
+    min_date = prediction_df["date_only"].min()
+    max_date = prediction_df["date_only"].max()
 
     with filter_cols[2]:
         selected_dates = st.date_input(
@@ -82,19 +113,16 @@ with card("Filters", "Refine your dashboard view", class_name="filter-card"):
             horizontal=True,
         )
     with filter_cols[4]:
-        if st.button("Refresh"):
+        if st.button("Refresh", use_container_width=True):
             clear_prediction_cache()
             clear_features_cache()
             clear_prediction_options_cache()
             clear_monthly_metrics_cache()
             st.rerun()
 
-if isinstance(selected_dates, tuple) and len(selected_dates) == 2:
-    start_date, end_date = selected_dates
-else:
-    start_date = end_date = selected_dates
+start_date, end_date = normalize_date_range(selected_dates)
 
-date_series = prediction_df["date"].dt.date
+date_series = prediction_df["date_only"]
 mask = (date_series >= start_date) & (date_series <= end_date)
 prediction_df = prediction_df.loc[mask].copy()
 
@@ -103,8 +131,9 @@ if not features_df.empty:
     features_df = features_df.copy()
     features_df["date"] = pd.to_datetime(features_df["date"], errors="coerce")
     features_df = features_df.dropna(subset=["date"])
-    feature_mask = (features_df["date"].dt.date >= start_date) & (
-        features_df["date"].dt.date <= end_date
+    features_df["date_only"] = features_df["date"].dt.date
+    feature_mask = (features_df["date_only"] >= start_date) & (
+        features_df["date_only"] <= end_date
     )
     features_df = features_df.loc[feature_mask].copy()
 
@@ -113,8 +142,9 @@ if not monthly_df.empty:
     monthly_df = monthly_df.copy()
     monthly_df["month"] = pd.to_datetime(monthly_df["month"], errors="coerce")
     monthly_df = monthly_df.dropna(subset=["month"])
-    monthly_mask = (monthly_df["month"].dt.date >= start_date) & (
-        monthly_df["month"].dt.date <= end_date
+    monthly_df["month_only"] = monthly_df["month"].dt.date
+    monthly_mask = (monthly_df["month_only"] >= start_date) & (
+        monthly_df["month_only"] <= end_date
     )
     monthly_df = monthly_df.loc[monthly_mask].copy()
 
@@ -139,34 +169,6 @@ def _format_number(value: float | int | None) -> str:
     if value is None or pd.isna(value):
         return "—"
     return f"{value:,.0f}"
-
-
-def render_kpi_card(
-    title: str,
-    value: str,
-    subtitle: str | None = None,
-    delta: str | None = None,
-) -> None:
-    meta_parts = []
-    if subtitle:
-        meta_parts.append(f'<span class="kpi-subtitle">{subtitle}</span>')
-    if delta:
-        meta_parts.append(f'<span class="kpi-delta">{delta}</span>')
-    meta_html = ""
-    if meta_parts:
-        meta_html = f'<div class="kpi-context">{" · ".join(meta_parts)}</div>'
-
-    st.markdown(
-        f"""
-        <div class="hrp-card kpi-card">
-            <div class="kpi-label">{title}</div>
-            <div class="kpi-value">{value}</div>
-            {meta_html}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
 
 sleep_proba = _coalesce_probability(
     prediction_df.get("sleep_quality_label"),
@@ -193,20 +195,8 @@ sleep_good_pct = sleep_label.eq(1).mean() * 100 if sleep_label.notna().any() els
 activity_good_pct = (
     activity_label.eq(1).mean() * 100 if activity_label.notna().any() else None
 )
-
-overall_score = pd.concat([sleep_proba, activity_proba], axis=1).mean(axis=1)
-rolling_std = overall_score.rolling(7, min_periods=1).std()
-consistency_score = (
-    (1 / (1 + rolling_std.mean())) * 100 if not rolling_std.empty else None
-)
-
-sleep_trend_value = "—"
-if len(prediction_df) >= 14:
-    sorted_df = prediction_df.sort_values("date")
-    recent = sorted_df.tail(7)
-    prior = sorted_df.iloc[-14:-7]
-    trend_delta = recent["sleep_proba"].mean() - prior["sleep_proba"].mean()
-    sleep_trend_value = f"{trend_delta * 100:+.1f} pts"
+sleep_avg = sleep_proba.mean() * 100 if sleep_proba.notna().any() else None
+activity_avg = activity_proba.mean() * 100 if activity_proba.notna().any() else None
 
 st.markdown('<div class="section-title">Overview</div>', unsafe_allow_html=True)
 st.markdown(
@@ -214,32 +204,24 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-kpi_cols = st.columns(6)
-with kpi_cols[0]:
-    render_kpi_card("Days analyzed", _format_number(len(prediction_df)))
-with kpi_cols[1]:
-    date_label = (
-        f"{start_date:%Y-%m-%d} → {end_date:%Y-%m-%d}"
-        if start_date and end_date
-        else "—"
-    )
-    render_kpi_card("Date range", date_label)
-with kpi_cols[2]:
-    render_kpi_card("Sleep good %", _format_percent(sleep_good_pct))
-with kpi_cols[3]:
-    render_kpi_card("Activity good %", _format_percent(activity_good_pct))
-with kpi_cols[4]:
-    render_kpi_card(
-        "Consistency score",
-        _format_percent(consistency_score),
-        subtitle="Lower variance is better",
-    )
-with kpi_cols[5]:
-    render_kpi_card("Sleep trend", sleep_trend_value, subtitle="Last 7d vs prior 7d")
+date_label = (
+    f"{start_date:%Y-%m-%d} → {end_date:%Y-%m-%d}" if start_date and end_date else "—"
+)
+kpi_html = "".join(
+    [
+        kpi_card("Days analyzed", _format_number(len(prediction_df))),
+        kpi_card("Date range", date_label),
+        kpi_card("Sleep good %", _format_percent(sleep_good_pct)),
+        kpi_card("Activity good %", _format_percent(activity_good_pct)),
+        kpi_card("Avg sleep proba", _format_percent(sleep_avg)),
+        kpi_card("Avg activity proba", _format_percent(activity_avg)),
+    ]
+)
+st.markdown(f'<div class="kpi-grid">{kpi_html}</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="section-title">Trends</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="section-subtitle">Sleep and activity probabilities over time.</div>',
+    '<div class="section-subtitle">Sleep and activity probabilities with rolling averages.</div>',
     unsafe_allow_html=True,
 )
 
@@ -270,80 +252,177 @@ if len(trend_df) >= rolling_window:
     ).mean()
 
 
-def _trend_chart(
-    data: pd.DataFrame,
-    base_col: str,
-    rolling_col: str,
-    title: str,
-    subtitle: str,
-    colors: list[str],
-) -> alt.Chart:
-    series_cols = [base_col]
-    if rolling_col in data.columns:
-        series_cols.append(rolling_col)
-
-    chart = (
-        alt.Chart(data)
-        .transform_fold(series_cols, as_=["series", "value"])
-        .mark_line(point=True)
-        .encode(
-            x=alt.X("date:T", title=None),
-            y=alt.Y("value:Q", title="Probability", scale=alt.Scale(domain=[0, 1])),
-            color=alt.Color(
-                "series:N",
-                scale=alt.Scale(domain=series_cols, range=colors),
-                legend=alt.Legend(title=None),
-            ),
-            tooltip=["date:T", alt.Tooltip("value:Q", format=".2f")],
-        )
-        .properties(height=320)
-    )
-
-    return chart.properties(title={"text": title, "subtitle": subtitle})
-
-
 if trend_df.empty or (
     trend_df["sleep_proba"].isna().all() and trend_df["activity_proba"].isna().all()
 ):
-    with card("Trend insights"):
-        st.info("Trend data isn't available for the selected range yet.")
+    section_card("Trend insights", "Trend data isn't available for the selected range.")
 else:
     trend_cols = st.columns(2)
     with trend_cols[0]:
-        with card(
-            "Sleep probability trend",
-            "Rolling averages smooth recent changes.",
-        ):
+        with card("Sleep pattern", "Probability with rolling average"):
             if trend_df["sleep_proba"].notna().any():
-                sleep_chart = _trend_chart(
-                    trend_df,
-                    "sleep_proba",
-                    "sleep_rolling",
-                    "Sleep probability",
-                    f"{granularity} trend",
-                    ["#4C78A8", "#72B7B2"],
+                sleep_plot_df = trend_df.copy()
+                if "sleep_rolling" not in sleep_plot_df.columns:
+                    sleep_plot_df["sleep_rolling"] = sleep_plot_df["sleep_proba"]
+                sleep_plot_df = sleep_plot_df.melt(
+                    id_vars=["date"],
+                    value_vars=["sleep_proba", "sleep_rolling"],
+                    var_name="series",
+                    value_name="value",
                 )
-                st.altair_chart(sleep_chart, use_container_width=True)
+                sleep_plot_df["series"] = sleep_plot_df["series"].replace(
+                    {
+                        "sleep_proba": "Sleep probability",
+                        "sleep_rolling": f"{rolling_window}-period rolling",
+                    }
+                )
+                sleep_fig = px.line(
+                    sleep_plot_df,
+                    x="date",
+                    y="value",
+                    color="series",
+                    markers=True,
+                    labels={"value": "Probability", "date": ""},
+                )
+                sleep_fig.update_yaxes(range=[0, 1])
+                st.plotly_chart(sleep_fig, use_container_width=True)
             else:
                 st.info("Sleep probability data isn't available for this range.")
 
     with trend_cols[1]:
-        with card(
-            "Activity probability trend",
-            "Rolling averages smooth recent changes.",
-        ):
+        with card("Activity pattern", "Probability with rolling average"):
             if trend_df["activity_proba"].notna().any():
-                activity_chart = _trend_chart(
-                    trend_df,
-                    "activity_proba",
-                    "activity_rolling",
-                    "Activity probability",
-                    f"{granularity} trend",
-                    ["#F58518", "#E45756"],
+                activity_plot_df = trend_df.copy()
+                if "activity_rolling" not in activity_plot_df.columns:
+                    activity_plot_df["activity_rolling"] = activity_plot_df[
+                        "activity_proba"
+                    ]
+                activity_plot_df = activity_plot_df.melt(
+                    id_vars=["date"],
+                    value_vars=["activity_proba", "activity_rolling"],
+                    var_name="series",
+                    value_name="value",
                 )
-                st.altair_chart(activity_chart, use_container_width=True)
+                activity_plot_df["series"] = activity_plot_df["series"].replace(
+                    {
+                        "activity_proba": "Activity probability",
+                        "activity_rolling": f"{rolling_window}-period rolling",
+                    }
+                )
+                activity_fig = px.line(
+                    activity_plot_df,
+                    x="date",
+                    y="value",
+                    color="series",
+                    markers=True,
+                    labels={"value": "Probability", "date": ""},
+                )
+                activity_fig.update_yaxes(range=[0, 1])
+                st.plotly_chart(activity_fig, use_container_width=True)
             else:
                 st.info("Activity probability data isn't available for this range.")
+
+st.markdown('<div class="section-title">Risk distribution</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="section-subtitle">Breakdown of predicted risk levels.</div>',
+    unsafe_allow_html=True,
+)
+
+risk_columns = [
+    "predicted_health_risk_level",
+    "health_risk_level",
+    "risk_level",
+]
+risk_column = next((col for col in risk_columns if col in prediction_df.columns), None)
+if risk_column:
+    risk_counts = (
+        prediction_df[risk_column].fillna("Unknown").value_counts().reset_index()
+    )
+    risk_counts.columns = ["risk_level", "count"]
+    risk_cols = st.columns(2)
+    with risk_cols[0]:
+        with card("Risk level share", "Donut view of risk categories"):
+            pie_fig = px.pie(
+                risk_counts,
+                names="risk_level",
+                values="count",
+                hole=0.5,
+            )
+            pie_fig.update_traces(textposition="inside", textinfo="percent+label")
+            st.plotly_chart(pie_fig, use_container_width=True)
+    with risk_cols[1]:
+        with card("Risk level counts", "Daily predictions by category"):
+            bar_fig = px.bar(
+                risk_counts,
+                x="risk_level",
+                y="count",
+                color="risk_level",
+            )
+            st.plotly_chart(bar_fig, use_container_width=True)
+else:
+    section_card("Risk distribution", "No risk level column found in predictions.")
+
+st.markdown('<div class="section-title">KPI trends</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="section-subtitle">Steps and sleep minutes over time.</div>',
+    unsafe_allow_html=True,
+)
+
+steps_column = None
+sleep_minutes_column = None
+feature_candidates = features_df.columns if not features_df.empty else []
+for col in ("steps", "total_steps"):
+    if col in feature_candidates:
+        steps_column = col
+        break
+for col in ("sleep_minutes", "total_minutes_asleep"):
+    if col in feature_candidates:
+        sleep_minutes_column = col
+        break
+
+if features_df.empty or not steps_column or not sleep_minutes_column:
+    section_card(
+        "KPI trends",
+        "Steps or sleep minutes data isn't available for the selected range.",
+    )
+else:
+    trend_metrics = features_df[["date", steps_column, sleep_minutes_column]].copy()
+    trend_metrics = trend_metrics.sort_values("date")
+    if granularity == "Monthly":
+        trend_metrics = (
+            trend_metrics.set_index("date")
+            .resample("MS")
+            .mean(numeric_only=True)
+            .reset_index()
+        )
+    elif granularity == "Weekly":
+        trend_metrics = (
+            trend_metrics.set_index("date")
+            .resample("W-MON")
+            .mean(numeric_only=True)
+            .reset_index()
+        )
+    trend_metrics = trend_metrics.rename(
+        columns={
+            steps_column: "Steps",
+            sleep_minutes_column: "Sleep minutes",
+        }
+    )
+    trend_long = trend_metrics.melt(
+        id_vars=["date"],
+        value_vars=["Steps", "Sleep minutes"],
+        var_name="metric",
+        value_name="value",
+    )
+    with card("Steps & sleep minutes", f"{granularity} averages"):
+        trend_fig = px.line(
+            trend_long,
+            x="date",
+            y="value",
+            color="metric",
+            markers=True,
+        )
+        st.plotly_chart(trend_fig, use_container_width=True)
 
 st.markdown('<div class="section-title">Insights</div>', unsafe_allow_html=True)
 st.markdown(

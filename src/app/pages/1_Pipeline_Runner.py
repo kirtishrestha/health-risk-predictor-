@@ -39,7 +39,7 @@ st.session_state.setdefault("pipeline_last_result", "No runs yet")
 def _notify(message: str, *, icon: str = "✅", success: bool = True) -> None:
     if hasattr(st, "toast"):
         st.toast(message, icon=icon)
-    elif success:
+    if success:
         st.success(message)
     else:
         st.error(message)
@@ -72,6 +72,32 @@ render_card(
     subtitle="Latest pipeline activity at a glance.",
     body_fn=_status_body,
 )
+
+st.markdown('<div class="section-title">Run steps</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="section-subtitle">Follow the guided flow to move from raw data to predictions.</div>',
+    unsafe_allow_html=True,
+)
+
+step_cols = st.columns(3)
+with step_cols[0]:
+    render_card(
+        "1. Upload",
+        subtitle="Provide data inputs.",
+        body="Upload a Fitbit ZIP and confirm the base folder is detected.",
+    )
+with step_cols[1]:
+    render_card(
+        "2. Train",
+        subtitle="Refresh models.",
+        body="Retrain sleep and activity quality models for the latest data.",
+    )
+with step_cols[2]:
+    render_card(
+        "3. Predict",
+        subtitle="Score daily metrics.",
+        body="Generate daily predictions to power the Analytics Dashboard.",
+    )
 
 
 def _inputs_body() -> None:
@@ -125,6 +151,7 @@ def _actions_body() -> None:
             "Run ETL",
             disabled=not env_ready or base_dir is None,
             help="Requires an uploaded Fitbit ZIP.",
+            use_container_width=True,
         )
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown(
@@ -137,6 +164,7 @@ def _actions_body() -> None:
             "Train Models",
             disabled=not env_ready,
             help="Retrain sleep and activity models.",
+            use_container_width=True,
         )
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown(
@@ -149,6 +177,7 @@ def _actions_body() -> None:
             "Run Inference",
             disabled=not env_ready,
             help="Generate new daily predictions.",
+            use_container_width=True,
         )
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown(
@@ -171,13 +200,17 @@ def _actions_body() -> None:
                 "--source",
                 pipeline_source,
             ]
-            with st.spinner("Running ETL..."):
+            with st.spinner("Working… please wait."):
                 success = run_command(etl_command)
             _update_status("ETL", success)
             if success:
                 _notify("ETL completed successfully.")
             else:
-                _notify("ETL failed. Check the terminal logs for details.", icon="⚠️", success=False)
+                _notify(
+                    "Run failed. Please check your terminal logs for details.",
+                    icon="❌",
+                    success=False,
+                )
 
     if train_button:
         sleep_command = [
@@ -196,7 +229,7 @@ def _actions_body() -> None:
             pipeline_source,
             "--all_users",
         ]
-        with st.spinner("Training models..."):
+        with st.spinner("Working… please wait."):
             sleep_success = run_command(sleep_command)
             activity_success = run_command(activity_command)
         success = sleep_success and activity_success
@@ -204,7 +237,11 @@ def _actions_body() -> None:
         if success:
             _notify("Model training completed successfully.")
         else:
-            _notify("Training finished with errors. Check the terminal logs.", icon="⚠️", success=False)
+            _notify(
+                "Run failed. Please check your terminal logs for details.",
+                icon="❌",
+                success=False,
+            )
 
     if inference_button:
         inference_command = [
@@ -216,14 +253,18 @@ def _actions_body() -> None:
             "--user_id",
             pipeline_user_id,
         ]
-        with st.spinner("Running inference..."):
+        with st.spinner("Working… please wait."):
             inference_success = run_command(inference_command)
         _update_status("Inference", inference_success)
         if inference_success:
             _notify("Inference completed successfully.")
             clear_prediction_cache()
         else:
-            _notify("Inference failed. Check the terminal logs.", icon="⚠️", success=False)
+            _notify(
+                "Run failed. Please check your terminal logs for details.",
+                icon="❌",
+                success=False,
+            )
 
 
 render_card(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
@@ -112,6 +113,9 @@ def stream_command_logs(command: list[str], log_key: str) -> Tuple[bool, str]:
 def run_command(command: list[str]) -> bool:
     """Run a CLI command and stream logs only to the terminal."""
 
-    process = subprocess.Popen(command)
-    return_code = process.wait()
-    return return_code == 0
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.stdout:
+        print(result.stdout)
+    if result.stderr:
+        print(result.stderr, file=sys.stderr)
+    return result.returncode == 0

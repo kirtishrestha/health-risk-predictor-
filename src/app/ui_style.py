@@ -14,7 +14,7 @@ def inject_global_css() -> None:
         """
         <style>
         :root {
-            --app-font-size: 17px;
+            --app-font-size: 18px;
         }
         html, body, [class*="css"]  {
             font-size: var(--app-font-size);
@@ -28,29 +28,30 @@ def inject_global_css() -> None:
             margin: 0 auto;
         }
         .hrp-title {
-            font-size: 2.5rem;
+            font-size: 2.9rem;
             font-weight: 700;
             margin-bottom: 0.25rem;
         }
         .hrp-subtitle {
-            font-size: 1.1rem;
+            font-size: 1.2rem;
             color: #6B7280;
             margin-bottom: 2.5rem;
         }
         .section-title {
-            font-size: 1.9rem;
+            font-size: 2.1rem;
             font-weight: 600;
             margin: 3.25rem 0 0.75rem 0;
         }
         .section-subtitle {
-            font-size: 1.05rem;
+            font-size: 1.1rem;
             color: #6B7280;
             margin-bottom: 2.25rem;
         }
         .section-spacer {
             height: 1.5rem;
         }
-        .hrp-card {
+        .hrp-card,
+        .card {
             background: #FFFDF9;
             border: 1px solid rgba(245, 158, 11, 0.16);
             border-radius: 16px;
@@ -67,17 +68,17 @@ def inject_global_css() -> None:
             padding: 1.25rem 1.5rem 0.75rem;
         }
         .card-title {
-            font-size: 1.15rem;
+            font-size: 1.25rem;
             font-weight: 600;
             margin-bottom: 0.25rem;
         }
         .card-subtitle {
-            font-size: 1rem;
+            font-size: 1.05rem;
             color: #6B7280;
             margin-bottom: 1rem;
         }
         .kpi-value {
-            font-size: 2.35rem;
+            font-size: 2.5rem;
             font-weight: 700;
             color: #111827;
             line-height: 1.2;
@@ -94,10 +95,30 @@ def inject_global_css() -> None:
             color: #9CA3AF;
             margin-top: 0.25rem;
         }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .kpi-grid .kpi-card {
+            margin-bottom: 0;
+        }
+        @media (max-width: 1200px) {
+            .kpi-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+        }
+        @media (max-width: 768px) {
+            .kpi-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
         .app-button .stButton button {
-            font-size: 1.05rem;
-            padding: 0.6rem 1.1rem;
+            font-size: 1.1rem;
+            padding: 0.75rem 1.1rem;
             border-radius: 12px;
+            width: 100%;
         }
         .action-helper {
             margin-top: 0.4rem;
