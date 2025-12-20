@@ -30,13 +30,13 @@ st.session_state.setdefault("pipeline_last_run_time", "—")
 st.session_state.setdefault("pipeline_last_result", "No runs yet")
 
 
-def _notify(message: str, *, icon: str = "✅", success: bool = True) -> None:
+def _notify_success(message: str) -> None:
     if hasattr(st, "toast"):
-        st.toast(message, icon=icon)
-    if success:
-        st.success(message)
-    else:
-        st.error(message)
+        st.toast(message, icon="✅")
+
+
+def _notify_failure(message: str) -> None:
+    st.error(message)
 
 
 def _update_status(action: str, success: bool) -> None:
@@ -45,16 +45,7 @@ def _update_status(action: str, success: bool) -> None:
     st.session_state["pipeline_last_result"] = "Success" if success else "Needs attention"
 
 
-st.header("Status")
-status_cols = st.columns(3)
-status_cols[0].metric("Last action", st.session_state["pipeline_last_action"])
-status_cols[1].metric("Last run time", st.session_state["pipeline_last_run_time"])
-status_cols[2].metric("Last result", st.session_state["pipeline_last_result"])
-
-st.markdown("---")
 st.header("Inputs")
-
-
 st.subheader("Provide the user and data source before running the pipeline.")
 col_inputs, col_upload = st.columns([2, 1])
 with col_inputs:
@@ -89,19 +80,7 @@ else:
 
 st.markdown("---")
 st.header("Actions")
-st.subheader("Choose a step to run. Logs remain in the terminal.")
-
-step_cols = st.columns(3)
-with step_cols[0]:
-    st.write("**1. Upload**")
-    st.caption("Upload a Fitbit ZIP and confirm the base folder is detected.")
-with step_cols[1]:
-    st.write("**2. Train**")
-    st.caption("Retrain sleep and activity quality models for the latest data.")
-with step_cols[2]:
-    st.write("**3. Predict**")
-    st.caption("Generate daily predictions to power the Analytics Dashboard.")
-
+st.subheader("Run ETL, training, or inference. Logs remain in the terminal.")
 
 base_dir = st.session_state.get("uploaded_zip_base_dir")
 pipeline_user_id = st.session_state.get("pipeline_user_id", "demo_user")
@@ -114,7 +93,6 @@ with col_etl:
         help="Requires an uploaded Fitbit ZIP.",
         use_container_width=True,
     )
-    st.caption("Load raw Fitbit exports into Supabase.")
 with col_train:
     train_button = st.button(
         "Train Models",
@@ -122,7 +100,6 @@ with col_train:
         help="Retrain sleep and activity models.",
         use_container_width=True,
     )
-    st.caption("Refresh sleep + activity models.")
 with col_infer:
     inference_button = st.button(
         "Run Inference",
@@ -130,11 +107,10 @@ with col_infer:
         help="Generate new daily predictions.",
         use_container_width=True,
     )
-    st.caption("Score the latest data for insights.")
 
 if run_etl_button:
     if base_dir is None:
-        st.error("ETL requires an uploaded Fitbit ZIP. Please upload a ZIP first.")
+        _notify_failure("ETL requires an uploaded Fitbit ZIP. Please upload a ZIP first.")
     else:
         etl_command = [
             sys.executable,
@@ -147,17 +123,13 @@ if run_etl_button:
             "--source",
             pipeline_source,
         ]
-        with st.spinner("Working… please wait."):
+        with st.spinner("Running ETL…"):
             success = run_command(etl_command)
         _update_status("ETL", success)
         if success:
-            _notify("ETL completed successfully.")
+            _notify_success("ETL completed successfully ✅")
         else:
-            _notify(
-                "Run failed. Please check your terminal logs for details.",
-                icon="❌",
-                success=False,
-            )
+            _notify_failure("ETL failed. Please check your terminal logs.")
 
 if train_button:
     sleep_command = [
@@ -176,19 +148,15 @@ if train_button:
         pipeline_source,
         "--all_users",
     ]
-    with st.spinner("Working… please wait."):
+    with st.spinner("Training models…"):
         sleep_success = run_command(sleep_command)
         activity_success = run_command(activity_command)
     success = sleep_success and activity_success
     _update_status("Training", success)
     if success:
-        _notify("Model training completed successfully.")
+        _notify_success("Model training completed successfully ✅")
     else:
-        _notify(
-            "Run failed. Please check your terminal logs for details.",
-            icon="❌",
-            success=False,
-        )
+        _notify_failure("Training failed. Please check your terminal logs.")
 
 if inference_button:
     inference_command = [
@@ -200,15 +168,11 @@ if inference_button:
         "--user_id",
         pipeline_user_id,
     ]
-    with st.spinner("Working… please wait."):
+    with st.spinner("Running inference…"):
         inference_success = run_command(inference_command)
     _update_status("Inference", inference_success)
     if inference_success:
-        _notify("Inference completed successfully.")
+        _notify_success("Inference completed successfully ✅")
         clear_prediction_cache()
     else:
-        _notify(
-            "Run failed. Please check your terminal logs for details.",
-            icon="❌",
-            success=False,
-        )
+        _notify_failure("Inference failed. Please check your terminal logs.")
