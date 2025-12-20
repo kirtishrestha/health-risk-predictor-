@@ -5,37 +5,22 @@ from __future__ import annotations
 import streamlit as st
 
 from src.app.ui_pipeline import env_ok as pipeline_env_ok
-from src.app.ui_style import inject_global_css, render_card
 
 
-st.set_page_config(
-    page_title="Fitbit Health Risk Predictor",
-    layout="wide",
-)
+st.set_page_config(page_title="Fitbit Health Risk Predictor", layout="wide")
 
-inject_global_css()
-
-st.markdown('<div class="hrp-title">Fitbit Health Risk Predictor</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="hrp-subtitle">Warm, focused insights from your Fitbit data pipeline.</div>',
-    unsafe_allow_html=True,
-)
+st.title("Fitbit Health Risk Predictor")
+st.caption("Warm, focused insights from your Fitbit data pipeline.")
 
 env_ready, missing = pipeline_env_ok()
+st.header("Environment status")
 if not env_ready:
-    render_card(
-        "Environment status",
-        subtitle="Supabase configuration needed for pipeline actions.",
-        body=f"Missing variables: {', '.join(missing)}",
-        class_name="filter-card",
+    st.warning(
+        "Supabase configuration needed for pipeline actions. "
+        f"Missing variables: {', '.join(missing)}"
     )
 else:
-    render_card(
-        "Environment status",
-        subtitle="Supabase configuration detected.",
-        body="You're ready to run the pipeline and explore analytics.",
-        class_name="filter-card",
-    )
+    st.success("Supabase configuration detected. You're ready to run the pipeline.")
 
 
 def _quick_start_body() -> None:
@@ -48,35 +33,29 @@ def _quick_start_body() -> None:
     )
 
 
-render_card(
-    "Quick start",
-    subtitle="Three steps to get value fast.",
-    body_fn=_quick_start_body,
-)
+st.markdown("---")
+st.header("Quick start")
+st.subheader("Three steps to get value fast.")
+_quick_start_body()
 
-st.markdown('<div class="section-title">Pages</div>', unsafe_allow_html=True)
+st.markdown("---")
+st.header("Pages")
 
 page_cols = st.columns(3)
 with page_cols[0]:
-    render_card(
-        "Pipeline Runner",
-        subtitle="Run ETL, training, and inference.",
-        body="Upload Fitbit data, retrain models, and produce predictions.",
-    )
+    st.subheader("Pipeline Runner")
+    st.write("Run ETL, training, and inference.")
+    st.caption("Upload Fitbit data, retrain models, and produce predictions.")
     st.page_link("pages/1_Pipeline_Runner.py", label="Open Pipeline Runner →")
 with page_cols[1]:
-    render_card(
-        "Analytics Dashboard",
-        subtitle="Explore daily predictions.",
-        body="Monitor trends, KPIs, and probability insights from Supabase.",
-    )
+    st.subheader("Analytics Dashboard")
+    st.write("Explore daily predictions.")
+    st.caption("Monitor trends, KPIs, and probability insights from Supabase.")
     st.page_link("pages/2_Analytics_Dashboard.py", label="Open Analytics Dashboard →")
 with page_cols[2]:
-    render_card(
-        "Legacy Dashboard",
-        subtitle="Legacy CSV-based experience.",
-        body="Review local metrics and legacy model outputs.",
-    )
+    st.subheader("Legacy (Read-only)")
+    st.write("Legacy CSV-based experience.")
+    st.caption("Review local metrics and legacy model outputs.")
     st.page_link("pages/3_Legacy_Dashboard.py", label="Open Legacy Dashboard →")
 
 st.caption("Run with `streamlit run src/app/streamlit_app.py`.")
