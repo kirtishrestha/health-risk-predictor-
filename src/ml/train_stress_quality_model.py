@@ -145,14 +145,28 @@ def train_model(
         raise ValueError("Provide --user_id or set --all_users to train on all users.")
 
     features = _load_features(user_id, source, all_users=all_users)
-    if features.empty:
-        raise ValueError("No data available to train the model.")
-
     missing_cols = [col for col in REQUIRED_COLUMNS if col not in features.columns]
     if missing_cols:
-        raise ValueError(
-            "daily_features is missing required columns: " + ", ".join(missing_cols)
+        logger.warning(
+            "daily_features is missing required columns (%s). Skipping stress model training.",
+            ", ".join(missing_cols),
         )
+        METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        skip_metrics = {
+            "skipped": True,
+            "reason": "Missing required columns",
+            "missing_columns": missing_cols,
+            "available_columns": list(features.columns),
+            "source": source,
+            "user_scope": "all_users" if all_users else "single_user",
+            "total_rows_loaded": len(features),
+        }
+        with METRICS_PATH.open("w", encoding="utf-8") as f:
+            json.dump(skip_metrics, f, indent=2)
+        return
+
+    if features.empty:
+        raise ValueError("No data available to train the model.")
 
     labeled = features.dropna(subset=["stress_avg"]).copy()
     if labeled.empty:
