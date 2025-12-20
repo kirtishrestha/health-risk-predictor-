@@ -2,15 +2,15 @@
   "best_model": "random_forest",
   "metrics": {
     "logistic_regression": {
-      "accuracy": 0.8,
-      "precision": 0.6666666666666666,
+      "accuracy": 0.805,
+      "precision": 0.75,
       "recall": 0.13953488372093023,
-      "f1": 0.23076923076923078,
-      "roc_auc": 0.6547178195822841,
+      "f1": 0.23529411764705882,
+      "roc_auc": 0.653977188564657,
       "confusion_matrix": [
         [
-          154,
-          3
+          155,
+          2
         ],
         [
           37,
@@ -19,15 +19,15 @@
       ]
     },
     "random_forest": {
-      "accuracy": 0.995,
-      "precision": 0.9772727272727273,
+      "accuracy": 1.0,
+      "precision": 1.0,
       "recall": 1.0,
-      "f1": 0.9885057471264368,
+      "f1": 1.0,
       "roc_auc": 1.0,
       "confusion_matrix": [
         [
-          156,
-          1
+          157,
+          0
         ],
         [
           0,
