@@ -44,10 +44,12 @@ FEATURE_COLUMNS = [
 ]
 
 
-def _load_features(user_id: str | None, source: str) -> pd.DataFrame:
+def _load_features(
+    user_id: str | None, source: str, all_users: bool = False
+) -> pd.DataFrame:
     client = get_supabase_client()
     feature_query = client.table("daily_features").select("*").eq("source", source)
-    if user_id:
+    if user_id and not all_users:
         feature_query = feature_query.eq("user_id", user_id)
     features = pd.DataFrame(feature_query.execute().data or [])
     return features
@@ -129,8 +131,13 @@ def _select_best_model(
     return max(metrics_by_model.items(), key=lambda item: item[1]["f1"])[0]
 
 
-def train_model(user_id: str | None = None, source: str = "fitbit") -> None:
-    features = _load_features(user_id, source)
+def train_model(
+    user_id: str | None = None, source: str = "fitbit", all_users: bool = False
+) -> None:
+    if not all_users and not user_id:
+        raise ValueError("Provide --user_id or set --all_users to train on all users.")
+
+    features = _load_features(user_id, source, all_users=all_users)
     if features.empty:
         raise ValueError("No data available to train the model.")
 
@@ -220,9 +227,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train activity quality classifier")
     parser.add_argument("--user_id", help="User identifier to filter", required=False)
     parser.add_argument("--source", default="fitbit", help="Data source label")
+    parser.add_argument(
+        "--all_users",
+        action="store_true",
+        help="Train on all users for the specified source, ignoring user filter",
+    )
     args = parser.parse_args()
 
-    train_model(user_id=args.user_id, source=args.source)
+    train_model(user_id=args.user_id, source=args.source, all_users=args.all_users)
 
 
 if __name__ == "__main__":
