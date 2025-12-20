@@ -49,7 +49,7 @@ def _load_features(
 ) -> pd.DataFrame:
     client = get_supabase_client()
     feature_query = client.table("daily_features").select("*").eq("source", source)
-    if user_id and not all_users:
+    if not all_users:
         feature_query = feature_query.eq("user_id", user_id)
     features = pd.DataFrame(feature_query.execute().data or [])
     return features
@@ -230,7 +230,7 @@ def main() -> None:
     parser.add_argument(
         "--all_users",
         action="store_true",
-        help="Train on all users for the specified source, ignoring user filter",
+        help="Train model using data from all users",
     )
     args = parser.parse_args()
 
