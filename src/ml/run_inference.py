@@ -10,6 +10,8 @@ create table if not exists daily_predictions (
   sleep_quality_proba double precision,
   activity_quality_label int,
   activity_quality_proba double precision,
+  stress_quality_label int,
+  stress_quality_proba double precision,
   created_at timestamptz not null default now(),
   primary key (user_id, date, source)
 );
@@ -40,6 +42,7 @@ logger = logging.getLogger(__name__)
 
 SLEEP_MODEL_PATH = Path("models/sleep_quality_model.pkl")
 ACTIVITY_MODEL_PATH = Path("models/activity_quality_model.pkl")
+STRESS_MODEL_PATH = Path("models/stress_quality_model.pkl")
 
 REQUIRED_COLUMNS = [
     "user_id",
@@ -171,6 +174,11 @@ def _local_upsert(client, table: str, df: pd.DataFrame, conflict_columns: Iterab
 def _run_inference(source: str, user_id: str | None, all_users: bool) -> int:
     sleep_model = _load_model(SLEEP_MODEL_PATH)
     activity_model = _load_model(ACTIVITY_MODEL_PATH)
+    stress_model = None
+    if STRESS_MODEL_PATH.exists():
+        stress_model = _load_model(STRESS_MODEL_PATH)
+    else:
+        logger.info("Stress quality model not found at %s; skipping stress inference.", STRESS_MODEL_PATH)
 
     data = _fetch_features(source=source, user_id=user_id, all_users=all_users)
     data = _prepare_dataset(data)
@@ -214,6 +222,17 @@ def _run_inference(source: str, user_id: str | None, all_users: bool) -> int:
 
     activity_labels, activity_proba = _predict_with_model(activity_model, activity_features)
     sleep_labels, sleep_proba = _predict_with_model(sleep_model, sleep_features)
+    stress_labels = None
+    stress_proba = None
+    if stress_model is not None:
+        missing_stress_cols = [col for col in FEATURE_COLUMNS if col not in merged.columns]
+        if missing_stress_cols:
+            logger.warning(
+                "Skipping stress inference; missing required columns: %s",
+                missing_stress_cols,
+            )
+        else:
+            stress_labels, stress_proba = _predict_with_model(stress_model, activity_features)
 
     _log_label_distribution("sleep_quality", sleep_labels)
     _log_label_distribution("activity_quality", activity_labels)
@@ -223,6 +242,11 @@ def _run_inference(source: str, user_id: str | None, all_users: bool) -> int:
     results["sleep_quality_proba"] = sleep_proba if sleep_proba is not None else None
     results["activity_quality_label"] = activity_labels.astype(int)
     results["activity_quality_proba"] = activity_proba if activity_proba is not None else None
+    results["stress_quality_label"] = None
+    results["stress_quality_proba"] = None
+    if stress_labels is not None:
+        results["stress_quality_label"] = np.asarray(stress_labels).astype(int)
+        results["stress_quality_proba"] = stress_proba if stress_proba is not None else None
     results["created_at"] = datetime.now(timezone.utc)
 
     client = get_supabase_client()
