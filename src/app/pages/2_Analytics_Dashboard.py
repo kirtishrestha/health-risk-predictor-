@@ -130,12 +130,31 @@ def _format_number(value: float | int | None) -> str:
     return f"{value:,.0f}"
 
 
-def _render_kpi(label: str, value: str, context: str | None = None) -> None:
-    with card(class_name="kpi-card"):
-        st.markdown(f'<div class="kpi-value">{value}</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="kpi-label">{label}</div>', unsafe_allow_html=True)
-        if context:
-            st.markdown(f'<div class="kpi-context">{context}</div>', unsafe_allow_html=True)
+def render_kpi_card(
+    title: str,
+    value: str,
+    subtitle: str | None = None,
+    delta: str | None = None,
+) -> None:
+    meta_parts = []
+    if subtitle:
+        meta_parts.append(f'<span class="kpi-subtitle">{subtitle}</span>')
+    if delta:
+        meta_parts.append(f'<span class="kpi-delta">{delta}</span>')
+    meta_html = ""
+    if meta_parts:
+        meta_html = f'<div class="kpi-context">{" · ".join(meta_parts)}</div>'
+
+    st.markdown(
+        f"""
+        <div class="hrp-card kpi-card">
+            <div class="kpi-label">{title}</div>
+            <div class="kpi-value">{value}</div>
+            {meta_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 sleep_proba = _coalesce_probability(
@@ -186,20 +205,24 @@ st.markdown(
 
 kpi_cols = st.columns(4)
 with kpi_cols[0]:
-    _render_kpi("Days analyzed", _format_number(len(prediction_df)))
+    render_kpi_card("Days analyzed", _format_number(len(prediction_df)))
 with kpi_cols[1]:
     date_label = f"{start_date} → {end_date}" if start_date and end_date else "—"
-    _render_kpi("Date range", date_label)
+    render_kpi_card("Date range", date_label)
 with kpi_cols[2]:
-    _render_kpi("Sleep good %", _format_percent(sleep_good_pct))
+    render_kpi_card("Sleep good %", _format_percent(sleep_good_pct))
 with kpi_cols[3]:
-    _render_kpi("Activity good %", _format_percent(activity_good_pct))
+    render_kpi_card("Activity good %", _format_percent(activity_good_pct))
 
-secondary_cols = st.columns(2)
+secondary_cols = st.columns(4)
 with secondary_cols[0]:
-    _render_kpi("Consistency score", _format_percent(consistency_score))
+    render_kpi_card(
+        "Consistency score",
+        _format_percent(consistency_score),
+        subtitle="Lower variance is better",
+    )
 with secondary_cols[1]:
-    _render_kpi("Sleep trend", sleep_trend_value, "vs previous 7 days")
+    render_kpi_card("Sleep trend", sleep_trend_value, subtitle="vs previous 7 days")
 
 st.markdown('<div class="section-title">Trends</div>', unsafe_allow_html=True)
 st.markdown(

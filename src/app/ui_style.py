@@ -16,8 +16,8 @@ def inject_global_css() -> None:
         .block-container {
             padding-top: 3rem;
             padding-bottom: 4rem;
-            padding-left: 3.5rem;
-            padding-right: 3.5rem;
+            padding-left: 3.75rem;
+            padding-right: 3.75rem;
         }
         .hrp-title {
             font-size: 2.25rem;
@@ -32,27 +32,28 @@ def inject_global_css() -> None:
         .section-title {
             font-size: 1.6rem;
             font-weight: 600;
-            margin: 2.5rem 0 0.5rem 0;
+            margin: 3rem 0 0.75rem 0;
         }
         .section-subtitle {
             font-size: 1rem;
             color: #6B7280;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
         }
         .section-spacer {
             height: 1.5rem;
         }
         .hrp-card {
             background: #FFFFFF;
-            border: 1px solid #E5E7EB;
+            border: 1px solid rgba(245, 158, 11, 0.16);
             border-radius: 16px;
-            padding: 1.75rem 1.75rem;
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-            margin-bottom: 1.75rem;
+            padding: 2rem 2rem;
+            box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+            margin-bottom: 2rem;
         }
         .hrp-card.kpi-card {
-            padding: 1.75rem 1.5rem;
-            min-height: 140px;
+            padding: 1.75rem 1.75rem 1.6rem;
+            min-height: 150px;
+            border-top: 4px solid var(--primary-color);
         }
         .hrp-card.filter-card {
             padding: 1.25rem 1.5rem 0.5rem;
@@ -72,16 +73,25 @@ def inject_global_css() -> None:
             font-weight: 700;
             color: #111827;
             line-height: 1.2;
+            margin-top: 0.35rem;
         }
         .kpi-label {
             font-size: 0.95rem;
             color: #6B7280;
-            margin-top: 0.35rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
         }
         .kpi-context {
             font-size: 0.85rem;
             color: #9CA3AF;
             margin-top: 0.25rem;
+        }
+        .kpi-subtitle {
+            color: #6B7280;
+        }
+        .kpi-delta {
+            color: var(--primary-color);
+            font-weight: 600;
         }
         </style>
         """,
