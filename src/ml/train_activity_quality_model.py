@@ -1,0 +1,229 @@
+"""Train and evaluate a binary classifier for activity quality."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import pickle
+from pathlib import Path
+from typing import Dict
+
+import numpy as np
+import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
+from sklearn.model_selection import StratifiedShuffleSplit, train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+from src.ingestion.upload_supabase import get_supabase_client
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+MODEL_PATH = Path("models/activity_quality_model.pkl")
+METRICS_PATH = Path("reports/activity_quality_metrics.json")
+
+FEATURE_COLUMNS = [
+    "steps",
+    "active_minutes",
+    "distance_km",
+    "calories",
+    "sleep_minutes",
+]
+
+
+def _load_features(user_id: str | None, source: str) -> pd.DataFrame:
+    client = get_supabase_client()
+    feature_query = client.table("daily_features").select("*").eq("source", source)
+    if user_id:
+        feature_query = feature_query.eq("user_id", user_id)
+    features = pd.DataFrame(feature_query.execute().data or [])
+    return features
+
+
+def _apply_activity_label(data: pd.DataFrame) -> pd.DataFrame:
+    labeled = data.copy()
+    labeled["steps"] = labeled["steps"].fillna(0)
+    labeled["active_minutes"] = labeled["active_minutes"].fillna(0)
+    labeled["activity_quality_label"] = (
+        (labeled["steps"] >= 7500) | (labeled["active_minutes"] >= 30)
+    ).astype(int)
+    return labeled
+
+
+def _build_pipeline(model_type: str) -> Pipeline:
+    preprocessor = ColumnTransformer(
+        transformers=[
+            (
+                "num",
+                Pipeline(
+                    steps=[
+                        ("imputer", SimpleImputer(strategy="median")),
+                        ("scaler", StandardScaler()),
+                    ]
+                ),
+                FEATURE_COLUMNS,
+            )
+        ]
+    )
+
+    if model_type == "logistic_regression":
+        clf = LogisticRegression(max_iter=500, class_weight="balanced")
+    elif model_type == "random_forest":
+        clf = RandomForestClassifier(
+            n_estimators=200,
+            random_state=42,
+            class_weight="balanced",
+        )
+    else:
+        raise ValueError(f"Unsupported model type: {model_type}")
+
+    return Pipeline(steps=[("preprocessor", preprocessor), ("classifier", clf)])
+
+
+def _safe_roc_auc(y_true: np.ndarray, y_proba: np.ndarray) -> float | None:
+    try:
+        if len(np.unique(y_true)) < 2:
+            return None
+        return roc_auc_score(y_true, y_proba)
+    except ValueError:
+        return None
+
+
+def _evaluate(
+    y_true: np.ndarray, y_pred: np.ndarray, y_proba: np.ndarray
+) -> Dict[str, float | list[list[int]] | None]:
+    roc_auc = _safe_roc_auc(y_true, y_proba)
+    return {
+        "accuracy": accuracy_score(y_true, y_pred),
+        "precision": precision_score(y_true, y_pred, zero_division=0),
+        "recall": recall_score(y_true, y_pred, zero_division=0),
+        "f1": f1_score(y_true, y_pred, zero_division=0),
+        "roc_auc": roc_auc,
+        "confusion_matrix": confusion_matrix(y_true, y_pred).tolist(),
+    }
+
+
+def _select_best_model(
+    metrics_by_model: Dict[str, Dict[str, float | list[list[int]] | None]]
+) -> str:
+    best_by_roc_auc = [
+        (name, metrics["roc_auc"])
+        for name, metrics in metrics_by_model.items()
+        if metrics["roc_auc"] is not None
+    ]
+    if best_by_roc_auc:
+        return max(best_by_roc_auc, key=lambda item: item[1])[0]
+    return max(metrics_by_model.items(), key=lambda item: item[1]["f1"])[0]
+
+
+def train_model(user_id: str | None = None, source: str = "fitbit") -> None:
+    features = _load_features(user_id, source)
+    if features.empty:
+        raise ValueError("No data available to train the model.")
+
+    for column in FEATURE_COLUMNS:
+        if column not in features.columns:
+            features[column] = np.nan
+
+    data = _apply_activity_label(features)
+    X = data[FEATURE_COLUMNS]
+    y = data["activity_quality_label"]
+
+    n_total = len(y)
+    class_distribution = y.value_counts().to_dict()
+    unique_classes = y.nunique()
+
+    logger.info(
+        "Dataset summary - total samples: %s, class distribution: %s, unique classes: %s",
+        n_total,
+        class_distribution,
+        unique_classes,
+    )
+
+    if unique_classes < 2:
+        logger.warning(
+            "Training skipped due to single-class labels. Class distribution: %s",
+            class_distribution,
+        )
+
+        METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        skip_metrics = {
+            "skipped": True,
+            "reason": "Only one class present",
+            "class_distribution": class_distribution,
+            "user_id": user_id,
+            "source": source,
+        }
+        with METRICS_PATH.open("w", encoding="utf-8") as f:
+            json.dump(skip_metrics, f, indent=2)
+        return
+
+    try:
+        splitter = StratifiedShuffleSplit(n_splits=1, test_size=0.3, random_state=42)
+        train_idx, test_idx = next(splitter.split(X, y))
+        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+    except ValueError as exc:
+        logger.warning(
+            "Stratified split failed (%s). Falling back to random split without stratification.",
+            exc,
+        )
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.3, random_state=42
+        )
+
+    models = {
+        "logistic_regression": _build_pipeline("logistic_regression"),
+        "random_forest": _build_pipeline("random_forest"),
+    }
+
+    all_metrics: Dict[str, Dict[str, float | list[list[int]] | None]] = {}
+
+    for name, model in models.items():
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        proba = model.predict_proba(X_test)[:, 1]
+        metrics = _evaluate(y_test, y_pred, proba)
+        all_metrics[name] = metrics
+        logger.info("%s metrics: %s", name, metrics)
+
+    best_model_name = _select_best_model(all_metrics)
+    best_model = models[best_model_name]
+
+    MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with MODEL_PATH.open("wb") as f:
+        pickle.dump(best_model, f)
+
+    METRICS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    metrics_payload = {"best_model": best_model_name, "metrics": all_metrics}
+    with METRICS_PATH.open("w", encoding="utf-8") as f:
+        json.dump(metrics_payload, f, indent=2)
+
+    logger.info("Saved best model (%s) to %s", best_model_name, MODEL_PATH)
+    logger.info("Metrics written to %s", METRICS_PATH)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Train activity quality classifier")
+    parser.add_argument("--user_id", help="User identifier to filter", required=False)
+    parser.add_argument("--source", default="fitbit", help="Data source label")
+    args = parser.parse_args()
+
+    train_model(user_id=args.user_id, source=args.source)
+
+
+if __name__ == "__main__":
+    main()
