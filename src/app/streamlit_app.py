@@ -723,6 +723,8 @@ def render_dashboard() -> None:
         "predicted_sleep_quality_label",
         "predicted_cardiovascular_strain_risk",
         "predicted_stress_risk",
+        "stress_quality_label",
+        "stress_quality_proba",
     ]
 
     available_columns = [col for col in display_columns if col in df_pred.columns]
@@ -810,6 +812,14 @@ def render_dashboard() -> None:
     if "predicted_sleep_quality_score" in df_pred.columns:
         st.subheader("Predicted sleep quality score (0–100)")
         st.line_chart(df_pred["predicted_sleep_quality_score"])
+
+    if "stress_quality_label" in df_pred.columns:
+        st.subheader("Predicted stress quality label (1=good, 0=high stress)")
+        st.line_chart(df_pred["stress_quality_label"])
+
+    if "stress_quality_proba" in df_pred.columns:
+        st.subheader("Predicted stress quality probability")
+        st.line_chart(df_pred["stress_quality_proba"])
 
     with st.expander("Try custom inputs", expanded=False):
         st.write("Manually enter daily metrics to see predicted risks.")
