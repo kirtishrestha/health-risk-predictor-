@@ -34,16 +34,26 @@ def _redact_values(text: str, values: Iterable[str]) -> str:
     return redacted
 
 
+def redact_secrets(text: str) -> str:
+    """Redact sensitive secrets from text."""
+
+    return re.sub(r"(SUPABASE_SERVICE_ROLE_KEY=)(\S+)", r"\1[REDACTED]", text)
+
+
 def redact_log_line(line: str) -> str:
     """Redact secrets from log lines before rendering."""
 
     env_values = [os.getenv(name, "") for name in REDACT_ENV_VARS]
     redacted = _redact_values(line, env_values)
-    redacted = re.sub(
-        r"(SUPABASE_SERVICE_ROLE_KEY=)(\S+)", r"\1[REDACTED]", redacted
-    )
+    redacted = redact_secrets(redacted)
     redacted = re.sub(r"(SUPABASE_DB_URL=)(\S+)", r"\1[REDACTED]", redacted)
     return redacted
+
+
+def find_fitabase_raw_dir(extracted_root: Path) -> Path | None:
+    """Return the Fitabase raw data folder inside an extracted ZIP."""
+
+    return find_fitbit_base_dir(extracted_root)
 
 
 def initialize_upload_state(uploaded_zip) -> None:
