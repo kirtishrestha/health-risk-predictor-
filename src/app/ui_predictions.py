@@ -146,6 +146,56 @@ def load_prediction_options() -> dict[str, list[str]]:
     return {"user_ids": user_ids, "sources": sources}
 
 
+@st.cache_data(show_spinner=False)
+def load_monthly_metrics(user_id: str, source: str) -> pd.DataFrame:
+    """Load monthly metrics from Supabase for a specific user/source."""
+
+    try:
+        client = get_supabase_client()
+    except SupabaseConfigError:
+        return pd.DataFrame()
+    except Exception as exc:  # pragma: no cover - surface query issues
+        st.error(f"Unable to initialize Supabase client: {exc}")
+        return pd.DataFrame()
+
+    try:
+        response = (
+            client.table("monthly_metrics")
+            .select(
+                ",".join(
+                    [
+                        "user_id",
+                        "month",
+                        "source",
+                        "avg_sleep_minutes",
+                        "avg_steps",
+                        "total_steps",
+                        "total_active_minutes",
+                        "sleep_days_count",
+                        "activity_days_count",
+                        "created_at",
+                    ]
+                )
+            )
+            .eq("user_id", user_id)
+            .eq("source", source)
+            .order("month", desc=False)
+            .execute()
+        )
+        df = pd.DataFrame(response.data or [])
+    except Exception as exc:  # pragma: no cover - surface query issues
+        st.error(f"Unable to load monthly_metrics: {exc}")
+        return pd.DataFrame()
+
+    if df.empty:
+        return df
+
+    if "month" in df.columns:
+        df["month"] = pd.to_datetime(df["month"], errors="coerce")
+    df = df.dropna(subset=["month"])
+    return df.sort_values("month")
+
+
 def clear_prediction_cache() -> None:
     """Clear cached predictions."""
 
@@ -162,6 +212,12 @@ def clear_prediction_options_cache() -> None:
     """Clear cached prediction filter options."""
 
     load_prediction_options.clear()
+
+
+def clear_monthly_metrics_cache() -> None:
+    """Clear cached monthly metrics."""
+
+    load_monthly_metrics.clear()
 
 
 def compute_kpis(prediction_df: pd.DataFrame) -> dict[str, object]:
