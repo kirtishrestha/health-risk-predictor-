@@ -29,8 +29,8 @@ def load_daily_predictions(user_id: str, source: str) -> pd.DataFrame:
         client = get_supabase_client()
     except SupabaseConfigError:
         return pd.DataFrame()
-    except Exception as exc:  # pragma: no cover - surface query issues
-        st.error(f"Unable to initialize Supabase client: {exc}")
+    except Exception:  # pragma: no cover - surface query issues
+        st.warning("Unable to initialize Supabase client. Check credentials.")
         return pd.DataFrame()
 
     try:
@@ -56,8 +56,8 @@ def load_daily_predictions(user_id: str, source: str) -> pd.DataFrame:
             .execute()
         )
         df = pd.DataFrame(response.data or [])
-    except Exception as exc:  # pragma: no cover - surface query issues
-        st.error(f"Unable to load daily_predictions: {exc}")
+    except Exception:  # pragma: no cover - surface query issues
+        st.warning("Unable to load daily predictions from Supabase.")
         return pd.DataFrame()
 
     if df.empty:
@@ -77,8 +77,8 @@ def load_daily_features(user_id: str, source: str) -> pd.DataFrame:
         client = get_supabase_client()
     except SupabaseConfigError:
         return pd.DataFrame()
-    except Exception as exc:  # pragma: no cover - surface query issues
-        st.error(f"Unable to initialize Supabase client: {exc}")
+    except Exception:  # pragma: no cover - surface query issues
+        st.warning("Unable to initialize Supabase client. Check credentials.")
         return pd.DataFrame()
 
     try:
@@ -101,8 +101,8 @@ def load_daily_features(user_id: str, source: str) -> pd.DataFrame:
             .execute()
         )
         df = pd.DataFrame(response.data or [])
-    except Exception as exc:  # pragma: no cover - surface query issues
-        st.error(f"Unable to load daily_features: {exc}")
+    except Exception:  # pragma: no cover - surface query issues
+        st.warning("Unable to load daily features from Supabase.")
         return pd.DataFrame()
 
     if df.empty:
@@ -122,8 +122,8 @@ def load_daily_sleep(user_id: str, source: str) -> pd.DataFrame:
         client = get_supabase_client()
     except SupabaseConfigError:
         return pd.DataFrame()
-    except Exception as exc:  # pragma: no cover - surface query issues
-        st.error(f"Unable to initialize Supabase client: {exc}")
+    except Exception:  # pragma: no cover - surface query issues
+        st.warning("Unable to initialize Supabase client. Check credentials.")
         return pd.DataFrame()
 
     try:
@@ -136,8 +136,8 @@ def load_daily_sleep(user_id: str, source: str) -> pd.DataFrame:
             .execute()
         )
         df = pd.DataFrame(response.data or [])
-    except Exception as exc:  # pragma: no cover - surface query issues
-        st.error(f"Unable to load daily_sleep: {exc}")
+    except Exception:  # pragma: no cover - surface query issues
+        st.warning("Unable to load daily sleep metrics from Supabase.")
         return pd.DataFrame()
 
     if df.empty:
@@ -157,8 +157,8 @@ def load_prediction_options() -> dict[str, list[str]]:
         client = get_supabase_client()
     except SupabaseConfigError:
         return {"user_ids": [], "sources": []}
-    except Exception as exc:  # pragma: no cover - surface query issues
-        st.error(f"Unable to initialize Supabase client: {exc}")
+    except Exception:  # pragma: no cover - surface query issues
+        st.warning("Unable to initialize Supabase client. Check credentials.")
         return {"user_ids": [], "sources": []}
 
     try:
@@ -169,8 +169,8 @@ def load_prediction_options() -> dict[str, list[str]]:
             .execute()
         )
         df = pd.DataFrame(response.data or [])
-    except Exception as exc:  # pragma: no cover - surface query issues
-        st.error(f"Unable to load prediction options: {exc}")
+    except Exception:  # pragma: no cover - surface query issues
+        st.warning("Unable to load prediction options from Supabase.")
         return {"user_ids": [], "sources": []}
 
     if df.empty:
@@ -189,8 +189,8 @@ def load_monthly_metrics(user_id: str, source: str) -> pd.DataFrame:
         client = get_supabase_client()
     except SupabaseConfigError:
         return pd.DataFrame()
-    except Exception as exc:  # pragma: no cover - surface query issues
-        st.error(f"Unable to initialize Supabase client: {exc}")
+    except Exception:  # pragma: no cover - surface query issues
+        st.warning("Unable to initialize Supabase client. Check credentials.")
         return pd.DataFrame()
 
     try:
@@ -218,8 +218,8 @@ def load_monthly_metrics(user_id: str, source: str) -> pd.DataFrame:
             .execute()
         )
         df = pd.DataFrame(response.data or [])
-    except Exception as exc:  # pragma: no cover - surface query issues
-        st.error(f"Unable to load monthly_metrics: {exc}")
+    except Exception:  # pragma: no cover - surface query issues
+        st.warning("Unable to load monthly metrics from Supabase.")
         return pd.DataFrame()
 
     if df.empty:
