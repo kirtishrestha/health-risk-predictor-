@@ -56,3 +56,20 @@ CREATE TABLE IF NOT EXISTS monthly_metrics (
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
     UNIQUE (user_id, month, source)
 );
+
+-- Daily predictions for model inference
+CREATE TABLE IF NOT EXISTS public.daily_predictions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    date DATE NOT NULL,
+    source TEXT NOT NULL,
+    sleep_quality_label INT,
+    sleep_quality_proba DOUBLE PRECISION,
+    activity_quality_label INT,
+    activity_quality_proba DOUBLE PRECISION,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, date, source)
+);
+
+CREATE INDEX IF NOT EXISTS daily_predictions_user_date_idx
+    ON public.daily_predictions (user_id, date);
