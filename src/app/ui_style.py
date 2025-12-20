@@ -18,6 +18,8 @@ def inject_global_css() -> None:
             padding-bottom: 4rem;
             padding-left: 3.75rem;
             padding-right: 3.75rem;
+            max-width: 1400px;
+            margin: 0 auto;
         }
         .hrp-title {
             font-size: 2.25rem;
@@ -30,14 +32,14 @@ def inject_global_css() -> None:
             margin-bottom: 2.5rem;
         }
         .section-title {
-            font-size: 1.6rem;
+            font-size: 1.75rem;
             font-weight: 600;
-            margin: 3rem 0 0.75rem 0;
+            margin: 3.25rem 0 0.75rem 0;
         }
         .section-subtitle {
             font-size: 1rem;
             color: #6B7280;
-            margin-bottom: 2rem;
+            margin-bottom: 2.25rem;
         }
         .section-spacer {
             height: 1.5rem;
@@ -46,17 +48,17 @@ def inject_global_css() -> None:
             background: #FFFFFF;
             border: 1px solid rgba(245, 158, 11, 0.16);
             border-radius: 16px;
-            padding: 2rem 2rem;
+            padding: 1.25rem 1.5rem;
             box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
             margin-bottom: 2rem;
         }
         .hrp-card.kpi-card {
-            padding: 1.75rem 1.75rem 1.6rem;
+            padding: 1.35rem 1.5rem 1.25rem;
             min-height: 150px;
             border-top: 4px solid var(--primary-color);
         }
         .hrp-card.filter-card {
-            padding: 1.25rem 1.5rem 0.5rem;
+            padding: 1.25rem 1.5rem 0.75rem;
         }
         .card-title {
             font-size: 1.1rem;
@@ -91,6 +93,22 @@ def inject_global_css() -> None:
         }
         .kpi-delta {
             color: var(--primary-color);
+            font-weight: 600;
+        }
+        [data-testid="stSidebar"] {
+            background: #FFFBF5;
+            padding-top: 1rem;
+        }
+        [data-testid="stSidebarNav"] ul {
+            gap: 0.25rem;
+        }
+        [data-testid="stSidebarNav"] a {
+            border-radius: 12px;
+            padding: 0.5rem 0.75rem;
+        }
+        [data-testid="stSidebarNav"] a[aria-current="page"] {
+            background: rgba(245, 158, 11, 0.16);
+            color: #92400E;
             font-weight: 600;
         }
         </style>

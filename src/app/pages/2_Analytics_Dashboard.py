@@ -203,26 +203,28 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-kpi_cols = st.columns(4)
+kpi_cols = st.columns(6)
 with kpi_cols[0]:
     render_kpi_card("Days analyzed", _format_number(len(prediction_df)))
 with kpi_cols[1]:
-    date_label = f"{start_date} → {end_date}" if start_date and end_date else "—"
+    date_label = (
+        f"{start_date:%Y-%m-%d} → {end_date:%Y-%m-%d}"
+        if start_date and end_date
+        else "—"
+    )
     render_kpi_card("Date range", date_label)
 with kpi_cols[2]:
     render_kpi_card("Sleep good %", _format_percent(sleep_good_pct))
 with kpi_cols[3]:
     render_kpi_card("Activity good %", _format_percent(activity_good_pct))
-
-secondary_cols = st.columns(4)
-with secondary_cols[0]:
+with kpi_cols[4]:
     render_kpi_card(
         "Consistency score",
         _format_percent(consistency_score),
         subtitle="Lower variance is better",
     )
-with secondary_cols[1]:
-    render_kpi_card("Sleep trend", sleep_trend_value, subtitle="vs previous 7 days")
+with kpi_cols[5]:
+    render_kpi_card("Sleep trend", sleep_trend_value, subtitle="Last 7d vs prior 7d")
 
 st.markdown('<div class="section-title">Trends</div>', unsafe_allow_html=True)
 st.markdown(
@@ -283,7 +285,7 @@ def _trend_chart(
             ),
             tooltip=["date:T", alt.Tooltip("value:Q", format=".2f")],
         )
-        .properties(height=280)
+        .properties(height=320)
     )
 
     return chart.properties(title={"text": title, "subtitle": subtitle})
@@ -338,50 +340,33 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-if features_df.empty:
-    with card("Insights"):
-        st.info(
-            "Daily feature metrics aren't available yet. Sync wearable data to unlock deeper insights."
-        )
-else:
-    insights_cols = st.columns(3)
-    with insights_cols[0]:
-        with card("Day-of-week heatmap", "Average sleep probability"):
-            heatmap_df = prediction_df[["date", "sleep_proba"]].copy()
-            heatmap_df["day_of_week"] = heatmap_df["date"].dt.day_name()
-            heatmap_df["week"] = heatmap_df["date"].dt.to_period("W-MON").dt.start_time
-            day_order = [
-                "Monday",
-                "Tuesday",
-                "Wednesday",
-                "Thursday",
-                "Friday",
-                "Saturday",
-                "Sunday",
-            ]
-            heatmap_summary = (
-                heatmap_df.dropna(subset=["sleep_proba"])
-                .groupby(["week", "day_of_week"], as_index=False)
-                .agg(avg_proba=("sleep_proba", "mean"))
-            )
-            if heatmap_summary.empty:
-                st.info("Not enough sleep probability data to build the heatmap.")
-            else:
-                heatmap = (
-                    alt.Chart(heatmap_summary)
-                    .mark_rect()
-                    .encode(
-                        x=alt.X("day_of_week:N", sort=day_order, title=None),
-                        y=alt.Y("week:T", title="Week of"),
-                        color=alt.Color("avg_proba:Q", title="Avg. prob"),
-                        tooltip=["week:T", "day_of_week:N", "avg_proba:Q"],
-                    )
-                    .properties(height=260)
-                )
-                st.altair_chart(heatmap, use_container_width=True)
+heatmap_summary = pd.DataFrame()
+heatmap_df = prediction_df[["date", "sleep_proba"]].copy()
+heatmap_df["day_of_week"] = heatmap_df["date"].dt.day_name()
+heatmap_df["week"] = heatmap_df["date"].dt.to_period("W-MON").dt.start_time
+day_order = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
+heatmap_summary = (
+    heatmap_df.dropna(subset=["sleep_proba"])
+    .groupby(["week", "day_of_week"], as_index=False)
+    .agg(avg_proba=("sleep_proba", "mean"))
+)
 
-    with insights_cols[1]:
-        with card("Steps vs activity probability"):
+insights_cols = st.columns(2)
+with insights_cols[0]:
+    with card("Steps vs activity probability"):
+        if features_df.empty:
+            st.info(
+                "Daily feature metrics aren't available yet. Sync wearable data to unlock deeper insights."
+            )
+        else:
             scatter_df = prediction_df.merge(
                 features_df,
                 on=["user_id", "source", "date"],
@@ -404,49 +389,62 @@ else:
                         ),
                         tooltip=["date:T", "steps:Q", "activity_proba:Q"],
                     )
-                    .properties(height=260)
+                    .properties(height=320)
                 )
                 st.altair_chart(scatter, use_container_width=True)
 
-    with insights_cols[2]:
-        with card("Label distribution", "Sleep vs activity labels"):
-            label_counts = (
-                pd.DataFrame(
-                    {
-                        "sleep": prediction_df["sleep_label"]
-                        .value_counts()
-                        .sort_index(),
-                        "activity": prediction_df["activity_label"]
-                        .value_counts()
-                        .sort_index(),
-                    }
-                )
-                .fillna(0)
-                .reset_index()
-                .rename(columns={"index": "label"})
+with insights_cols[1]:
+    with card("Label distribution", "Sleep vs activity labels"):
+        label_counts = (
+            pd.DataFrame(
+                {
+                    "sleep": prediction_df["sleep_label"].value_counts().sort_index(),
+                    "activity": prediction_df["activity_label"]
+                    .value_counts()
+                    .sort_index(),
+                }
             )
-            label_long = label_counts.melt(
-                id_vars=["label"],
-                value_vars=["sleep", "activity"],
-                var_name="type",
-                value_name="count",
+            .fillna(0)
+            .reset_index()
+            .rename(columns={"index": "label"})
+        )
+        label_long = label_counts.melt(
+            id_vars=["label"],
+            value_vars=["sleep", "activity"],
+            var_name="type",
+            value_name="count",
+        )
+        distribution = (
+            alt.Chart(label_long)
+            .mark_bar()
+            .encode(
+                x=alt.X("label:O", title="Label"),
+                y=alt.Y("count:Q", title="Days"),
+                color=alt.Color(
+                    "type:N",
+                    scale=alt.Scale(range=["#4C78A8", "#F58518"]),
+                    legend=alt.Legend(title=None),
+                ),
+                tooltip=["label:O", "type:N", "count:Q"],
             )
-            distribution = (
-                alt.Chart(label_long)
-                .mark_bar()
-                .encode(
-                    x=alt.X("label:O", title="Label"),
-                    y=alt.Y("count:Q", title="Days"),
-                    color=alt.Color(
-                        "type:N",
-                        scale=alt.Scale(range=["#4C78A8", "#F58518"]),
-                        legend=alt.Legend(title=None),
-                    ),
-                    tooltip=["label:O", "type:N", "count:Q"],
-                )
-                .properties(height=260)
+            .properties(height=320)
+        )
+        st.altair_chart(distribution, use_container_width=True)
+
+if not heatmap_summary.empty:
+    with card("Day-of-week heatmap", "Average sleep probability"):
+        heatmap = (
+            alt.Chart(heatmap_summary)
+            .mark_rect()
+            .encode(
+                x=alt.X("day_of_week:N", sort=day_order, title=None),
+                y=alt.Y("week:T", title="Week of"),
+                color=alt.Color("avg_proba:Q", title="Avg. prob"),
+                tooltip=["week:T", "day_of_week:N", "avg_proba:Q"],
             )
-            st.altair_chart(distribution, use_container_width=True)
+            .properties(height=320)
+        )
+        st.altair_chart(heatmap, use_container_width=True)
 
 with st.expander("View data table", expanded=False):
     display_columns = [
@@ -462,6 +460,14 @@ with st.expander("View data table", expanded=False):
         if col not in display_df.columns:
             display_df[col] = None
     display_df = display_df[display_columns].reset_index(drop=True)
+    if "date" in display_df.columns:
+        display_df["date"] = pd.to_datetime(
+            display_df["date"], errors="coerce"
+        ).dt.strftime("%Y-%m-%d")
+    if "created_at" in display_df.columns:
+        display_df["created_at"] = pd.to_datetime(
+            display_df["created_at"], errors="coerce"
+        ).dt.strftime("%Y-%m-%d")
     st.dataframe(display_df, use_container_width=True)
 
     csv_bytes = display_df.to_csv(index=False).encode("utf-8")
