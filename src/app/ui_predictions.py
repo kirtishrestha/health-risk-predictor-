@@ -115,6 +115,41 @@ def load_daily_features(user_id: str, source: str) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
+def load_daily_sleep(user_id: str, source: str) -> pd.DataFrame:
+    """Load daily sleep metrics from Supabase for a specific user/source."""
+
+    try:
+        client = get_supabase_client()
+    except SupabaseConfigError:
+        return pd.DataFrame()
+    except Exception as exc:  # pragma: no cover - surface query issues
+        st.error(f"Unable to initialize Supabase client: {exc}")
+        return pd.DataFrame()
+
+    try:
+        response = (
+            client.table("daily_sleep")
+            .select("user_id,date,source,sleep_minutes")
+            .eq("user_id", user_id)
+            .eq("source", source)
+            .order("date", desc=False)
+            .execute()
+        )
+        df = pd.DataFrame(response.data or [])
+    except Exception as exc:  # pragma: no cover - surface query issues
+        st.error(f"Unable to load daily_sleep: {exc}")
+        return pd.DataFrame()
+
+    if df.empty:
+        return df
+
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
+    return df.sort_values("date")
+
+
+@st.cache_data(show_spinner=False)
 def load_prediction_options() -> dict[str, list[str]]:
     """Load distinct user and source options from Supabase predictions."""
 
@@ -206,6 +241,12 @@ def clear_features_cache() -> None:
     """Clear cached daily features."""
 
     load_daily_features.clear()
+
+
+def clear_daily_sleep_cache() -> None:
+    """Clear cached daily sleep metrics."""
+
+    load_daily_sleep.clear()
 
 
 def clear_prediction_options_cache() -> None:

@@ -249,6 +249,7 @@ def add_predictions(
 st.set_page_config(page_title="Legacy Dashboard", page_icon="🧰", layout="wide")
 
 st.title("Legacy Dashboard (Deprecated)")
+st.caption("Legacy dashboard (deprecated)")
 st.warning(
     "This dashboard uses local CSVs and model artifacts. It is deprecated—"
     "please use the Pipeline Runner and Analytics Dashboard for the current workflow."
@@ -341,7 +342,15 @@ available_columns = [col for col in display_columns if col in df_pred.columns]
 st.dataframe(df_pred[available_columns].reset_index(drop=True), use_container_width=True)
 
 st.subheader("Steps over time")
-st.line_chart(df_pred.set_index("date")["total_steps"])
+if df_pred["total_steps"].notna().any():
+    st.line_chart(df_pred.set_index("date")["total_steps"])
+else:
+    st.info("No step data available for the selected filters.")
 
 st.subheader("Sleep duration over time (minutes asleep)")
-st.line_chart(df_pred.set_index("date")["total_minutes_asleep"])
+if "total_minutes_asleep" in df_pred.columns and df_pred[
+    "total_minutes_asleep"
+].notna().any():
+    st.line_chart(df_pred.set_index("date")["total_minutes_asleep"])
+else:
+    st.info("No sleep duration data available for the selected filters.")
