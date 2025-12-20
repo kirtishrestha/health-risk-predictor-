@@ -69,10 +69,10 @@ with card("Filters", "Refine your dashboard view", class_name="filter-card"):
             max_value=max_date,
         )
     with filter_cols[3]:
-        granularity = st.segmented_control(
+        granularity = st.radio(
             "Granularity",
             options=["Daily", "Weekly", "Monthly"],
-            default="Daily",
+            horizontal=True,
         )
     with filter_cols[4]:
         if st.button("Refresh"):
