@@ -10,18 +10,12 @@ import streamlit as st
 
 from src.app.ui_pipeline import env_ok, initialize_upload_state, run_command
 from src.app.ui_predictions import clear_prediction_cache
-from src.app.ui_style import inject_global_css, render_card
 
 
 st.set_page_config(page_title="Pipeline Runner", page_icon="🚀", layout="wide")
 
-inject_global_css()
-
-st.markdown('<div class="hrp-title">Pipeline Runner</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="hrp-subtitle">Run ETL, training, and inference with a clean, guided workflow.</div>',
-    unsafe_allow_html=True,
-)
+st.title("Pipeline Runner")
+st.caption("Run ETL, training, and inference with a clean, guided workflow.")
 
 env_ready, missing = env_ok()
 if not env_ready:
@@ -51,214 +45,113 @@ def _update_status(action: str, success: bool) -> None:
     st.session_state["pipeline_last_result"] = "Success" if success else "Needs attention"
 
 
-def _status_body() -> None:
-    status_cols = st.columns(3)
-    with status_cols[0]:
-        st.markdown("**Last action**")
-        st.markdown(st.session_state["pipeline_last_action"])
-    with status_cols[1]:
-        st.markdown("**Last run time**")
-        st.markdown(st.session_state["pipeline_last_run_time"])
-    with status_cols[2]:
-        st.markdown("**Last result**")
-        result = st.session_state["pipeline_last_result"]
-        st.markdown(
-            f'<span class="status-pill">{result}</span>',
-            unsafe_allow_html=True,
-        )
+st.header("Status")
+status_cols = st.columns(3)
+status_cols[0].metric("Last action", st.session_state["pipeline_last_action"])
+status_cols[1].metric("Last run time", st.session_state["pipeline_last_run_time"])
+status_cols[2].metric("Last result", st.session_state["pipeline_last_result"])
 
-render_card(
-    "Run status",
-    subtitle="Latest pipeline activity at a glance.",
-    body_fn=_status_body,
-)
+st.markdown("---")
+st.header("Inputs")
 
-st.markdown('<div class="section-title">Run steps</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="section-subtitle">Follow the guided flow to move from raw data to predictions.</div>',
-    unsafe_allow_html=True,
-)
+
+st.subheader("Provide the user and data source before running the pipeline.")
+col_inputs, col_upload = st.columns([2, 1])
+with col_inputs:
+    st.text_input("User ID", value="demo_user", key="pipeline_user_id")
+    st.selectbox(
+        "Source",
+        ["fitbit", "fitbit_bella_a", "fitbit_bella_b"],
+        index=0,
+        key="pipeline_source",
+    )
+
+with col_upload:
+    uploaded_zip = st.file_uploader(
+        "Upload Fitbit export ZIP",
+        type=["zip"],
+        accept_multiple_files=False,
+        key="pipeline_zip",
+    )
+
+initialize_upload_state(uploaded_zip)
+
+base_dir = st.session_state.get("uploaded_zip_base_dir")
+csv_count = st.session_state.get("uploaded_zip_csv_count")
+if uploaded_zip is not None:
+    if base_dir:
+        st.success(f"Detected base folder: {Path(base_dir).name}")
+        st.caption(f"CSV files found: {csv_count}")
+    else:
+        st.error("Could not locate Fitbit CSVs inside the ZIP.")
+else:
+    st.info("Upload a Fitbit ZIP export to enable ETL.")
+
+st.markdown("---")
+st.header("Actions")
+st.subheader("Choose a step to run. Logs remain in the terminal.")
 
 step_cols = st.columns(3)
 with step_cols[0]:
-    render_card(
-        "1. Upload",
-        subtitle="Provide data inputs.",
-        body="Upload a Fitbit ZIP and confirm the base folder is detected.",
-    )
+    st.write("**1. Upload**")
+    st.caption("Upload a Fitbit ZIP and confirm the base folder is detected.")
 with step_cols[1]:
-    render_card(
-        "2. Train",
-        subtitle="Refresh models.",
-        body="Retrain sleep and activity quality models for the latest data.",
-    )
+    st.write("**2. Train**")
+    st.caption("Retrain sleep and activity quality models for the latest data.")
 with step_cols[2]:
-    render_card(
-        "3. Predict",
-        subtitle="Score daily metrics.",
-        body="Generate daily predictions to power the Analytics Dashboard.",
+    st.write("**3. Predict**")
+    st.caption("Generate daily predictions to power the Analytics Dashboard.")
+
+
+base_dir = st.session_state.get("uploaded_zip_base_dir")
+pipeline_user_id = st.session_state.get("pipeline_user_id", "demo_user")
+pipeline_source = st.session_state.get("pipeline_source", "fitbit")
+col_etl, col_train, col_infer = st.columns(3)
+with col_etl:
+    run_etl_button = st.button(
+        "Run ETL",
+        disabled=not env_ready or base_dir is None,
+        help="Requires an uploaded Fitbit ZIP.",
+        use_container_width=True,
     )
+    st.caption("Load raw Fitbit exports into Supabase.")
+with col_train:
+    train_button = st.button(
+        "Train Models",
+        disabled=not env_ready,
+        help="Retrain sleep and activity models.",
+        use_container_width=True,
+    )
+    st.caption("Refresh sleep + activity models.")
+with col_infer:
+    inference_button = st.button(
+        "Run Inference",
+        disabled=not env_ready,
+        help="Generate new daily predictions.",
+        use_container_width=True,
+    )
+    st.caption("Score the latest data for insights.")
 
-
-def _inputs_body() -> None:
-    col_inputs, col_upload = st.columns([2, 1])
-    with col_inputs:
-        st.text_input("User ID", value="demo_user", key="pipeline_user_id")
-        st.selectbox(
-            "Source",
-            ["fitbit", "fitbit_bella_a", "fitbit_bella_b"],
-            index=0,
-            key="pipeline_source",
-        )
-
-    with col_upload:
-        uploaded_zip = st.file_uploader(
-            "Upload Fitbit export ZIP",
-            type=["zip"],
-            accept_multiple_files=False,
-            key="pipeline_zip",
-        )
-
-    initialize_upload_state(uploaded_zip)
-
-    base_dir = st.session_state.get("uploaded_zip_base_dir")
-    csv_count = st.session_state.get("uploaded_zip_csv_count")
-    if uploaded_zip is not None:
-        if base_dir:
-            st.success(f"Detected base folder: {Path(base_dir).name}")
-            st.caption(f"CSV files found: {csv_count}")
-        else:
-            st.error("Could not locate Fitbit CSVs inside the ZIP.")
+if run_etl_button:
+    if base_dir is None:
+        st.error("ETL requires an uploaded Fitbit ZIP. Please upload a ZIP first.")
     else:
-        st.info("Upload a Fitbit ZIP export to enable ETL.")
-
-
-render_card(
-    "Inputs",
-    subtitle="Provide the user and data source before running the pipeline.",
-    body_fn=_inputs_body,
-)
-
-
-def _actions_body() -> None:
-    base_dir = st.session_state.get("uploaded_zip_base_dir")
-    pipeline_user_id = st.session_state.get("pipeline_user_id", "demo_user")
-    pipeline_source = st.session_state.get("pipeline_source", "fitbit")
-    col_etl, col_train, col_infer = st.columns(3)
-    with col_etl:
-        st.markdown('<div class="app-button">', unsafe_allow_html=True)
-        run_etl_button = st.button(
-            "Run ETL",
-            disabled=not env_ready or base_dir is None,
-            help="Requires an uploaded Fitbit ZIP.",
-            use_container_width=True,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown(
-            '<div class="action-helper">Load raw Fitbit exports into Supabase.</div>',
-            unsafe_allow_html=True,
-        )
-    with col_train:
-        st.markdown('<div class="app-button">', unsafe_allow_html=True)
-        train_button = st.button(
-            "Train Models",
-            disabled=not env_ready,
-            help="Retrain sleep and activity models.",
-            use_container_width=True,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown(
-            '<div class="action-helper">Refresh sleep + activity models.</div>',
-            unsafe_allow_html=True,
-        )
-    with col_infer:
-        st.markdown('<div class="app-button">', unsafe_allow_html=True)
-        inference_button = st.button(
-            "Run Inference",
-            disabled=not env_ready,
-            help="Generate new daily predictions.",
-            use_container_width=True,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown(
-            '<div class="action-helper">Score the latest data for insights.</div>',
-            unsafe_allow_html=True,
-        )
-
-    if run_etl_button:
-        if base_dir is None:
-            st.error("ETL requires an uploaded Fitbit ZIP. Please upload a ZIP first.")
-        else:
-            etl_command = [
-                sys.executable,
-                "-m",
-                "src.pipeline.run_etl",
-                "--raw_dir",
-                base_dir,
-                "--user_id",
-                pipeline_user_id,
-                "--source",
-                pipeline_source,
-            ]
-            with st.spinner("Working… please wait."):
-                success = run_command(etl_command)
-            _update_status("ETL", success)
-            if success:
-                _notify("ETL completed successfully.")
-            else:
-                _notify(
-                    "Run failed. Please check your terminal logs for details.",
-                    icon="❌",
-                    success=False,
-                )
-
-    if train_button:
-        sleep_command = [
+        etl_command = [
             sys.executable,
             "-m",
-            "src.ml.train_sleep_quality_model",
-            "--source",
-            pipeline_source,
-            "--all_users",
-        ]
-        activity_command = [
-            sys.executable,
-            "-m",
-            "src.ml.train_activity_quality_model",
-            "--source",
-            pipeline_source,
-            "--all_users",
-        ]
-        with st.spinner("Working… please wait."):
-            sleep_success = run_command(sleep_command)
-            activity_success = run_command(activity_command)
-        success = sleep_success and activity_success
-        _update_status("Training", success)
-        if success:
-            _notify("Model training completed successfully.")
-        else:
-            _notify(
-                "Run failed. Please check your terminal logs for details.",
-                icon="❌",
-                success=False,
-            )
-
-    if inference_button:
-        inference_command = [
-            sys.executable,
-            "-m",
-            "src.ml.run_inference",
-            "--source",
-            pipeline_source,
+            "src.pipeline.run_etl",
+            "--raw_dir",
+            base_dir,
             "--user_id",
             pipeline_user_id,
+            "--source",
+            pipeline_source,
         ]
         with st.spinner("Working… please wait."):
-            inference_success = run_command(inference_command)
-        _update_status("Inference", inference_success)
-        if inference_success:
-            _notify("Inference completed successfully.")
-            clear_prediction_cache()
+            success = run_command(etl_command)
+        _update_status("ETL", success)
+        if success:
+            _notify("ETL completed successfully.")
         else:
             _notify(
                 "Run failed. Please check your terminal logs for details.",
@@ -266,9 +159,56 @@ def _actions_body() -> None:
                 success=False,
             )
 
+if train_button:
+    sleep_command = [
+        sys.executable,
+        "-m",
+        "src.ml.train_sleep_quality_model",
+        "--source",
+        pipeline_source,
+        "--all_users",
+    ]
+    activity_command = [
+        sys.executable,
+        "-m",
+        "src.ml.train_activity_quality_model",
+        "--source",
+        pipeline_source,
+        "--all_users",
+    ]
+    with st.spinner("Working… please wait."):
+        sleep_success = run_command(sleep_command)
+        activity_success = run_command(activity_command)
+    success = sleep_success and activity_success
+    _update_status("Training", success)
+    if success:
+        _notify("Model training completed successfully.")
+    else:
+        _notify(
+            "Run failed. Please check your terminal logs for details.",
+            icon="❌",
+            success=False,
+        )
 
-render_card(
-    "Run actions",
-    subtitle="Choose a step to run. Logs remain in the terminal.",
-    body_fn=_actions_body,
-)
+if inference_button:
+    inference_command = [
+        sys.executable,
+        "-m",
+        "src.ml.run_inference",
+        "--source",
+        pipeline_source,
+        "--user_id",
+        pipeline_user_id,
+    ]
+    with st.spinner("Working… please wait."):
+        inference_success = run_command(inference_command)
+    _update_status("Inference", inference_success)
+    if inference_success:
+        _notify("Inference completed successfully.")
+        clear_prediction_cache()
+    else:
+        _notify(
+            "Run failed. Please check your terminal logs for details.",
+            icon="❌",
+            success=False,
+        )

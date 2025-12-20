@@ -11,21 +11,14 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from src.app.ui_style import inject_global_css
-
 st.set_page_config(
-    page_title="Legacy Dashboard (Deprecated)",
+    page_title="Legacy (Read-only) Dashboard",
     page_icon="🧪",
     layout="wide",
 )
 
-inject_global_css()
-
-st.markdown('<div class="hrp-title">Legacy Dashboard</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="hrp-subtitle">Deprecated workflow powered by local CSVs and model artifacts.</div>',
-    unsafe_allow_html=True,
-)
+st.title("Legacy (Read-only) Dashboard")
+st.caption("Deprecated workflow powered by local CSVs and model artifacts.")
 st.info(
     "This legacy dashboard is deprecated and maintained for reference. "
     "Use Pipeline Runner and Analytics Dashboard for the current experience."
