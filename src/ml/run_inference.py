@@ -178,7 +178,10 @@ def _run_inference(source: str, user_id: str | None, all_users: bool) -> int:
     if STRESS_MODEL_PATH.exists():
         stress_model = _load_model(STRESS_MODEL_PATH)
     else:
-        logger.info("Stress quality model not found at %s; skipping stress inference.", STRESS_MODEL_PATH)
+        logger.info(
+            "Stress quality model not found at %s; skipping stress inference and stress columns will not be written.",
+            STRESS_MODEL_PATH,
+        )
 
     data = _fetch_features(source=source, user_id=user_id, all_users=all_users)
     data = _prepare_dataset(data)
@@ -228,7 +231,7 @@ def _run_inference(source: str, user_id: str | None, all_users: bool) -> int:
         missing_stress_cols = [col for col in FEATURE_COLUMNS if col not in merged.columns]
         if missing_stress_cols:
             logger.warning(
-                "Skipping stress inference; missing required columns: %s",
+                "Skipping stress inference; missing required columns: %s. Stress columns will not be written.",
                 missing_stress_cols,
             )
         else:
@@ -242,8 +245,6 @@ def _run_inference(source: str, user_id: str | None, all_users: bool) -> int:
     results["sleep_quality_proba"] = sleep_proba if sleep_proba is not None else None
     results["activity_quality_label"] = activity_labels.astype(int)
     results["activity_quality_proba"] = activity_proba if activity_proba is not None else None
-    results["stress_quality_label"] = None
-    results["stress_quality_proba"] = None
     if stress_labels is not None:
         results["stress_quality_label"] = np.asarray(stress_labels).astype(int)
         results["stress_quality_proba"] = stress_proba if stress_proba is not None else None
