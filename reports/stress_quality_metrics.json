@@ -1,0 +1,22 @@
+{
+  "skipped": true,
+  "reason": "Missing required columns",
+  "missing_columns": [
+    "stress_avg"
+  ],
+  "available_columns": [
+    "user_id",
+    "date",
+    "source",
+    "sleep_minutes",
+    "steps",
+    "distance_km",
+    "active_minutes",
+    "calories",
+    "created_at",
+    "raw_user_id"
+  ],
+  "source": "fitbit",
+  "user_scope": "all_users",
+  "total_rows_loaded": 1000
+}
