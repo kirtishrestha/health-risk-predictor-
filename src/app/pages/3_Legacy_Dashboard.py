@@ -11,12 +11,15 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from src.app.ui_style import inject_global_css
 
 st.set_page_config(
     page_title="Legacy Dashboard (Deprecated)",
     page_icon="🧪",
     layout="wide",
 )
+
+inject_global_css()
 
 if not st.session_state.get("dev_mode", False):
     st.info("Legacy Dashboard is hidden. Enable Developer mode in the sidebar to view it.")
