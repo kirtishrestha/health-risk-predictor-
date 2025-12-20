@@ -28,10 +28,11 @@ def add_rolling(series: pd.Series, window: int = 7) -> pd.Series:
 def compute_risk_bucket(
     df: pd.DataFrame,
     *,
-    low_threshold: float = 0.75,
-    high_threshold: float = 0.45,
+    low_threshold: float = 0.35,
+    high_threshold: float = 0.65,
     score_columns: Iterable[str] | None = None,
     existing_column: str | None = None,
+    invert_scores: bool = False,
 ) -> pd.DataFrame:
     """Return a dataframe with risk score and bucket columns for display."""
 
@@ -51,10 +52,14 @@ def compute_risk_bucket(
     score = pd.concat(
         [pd.to_numeric(df_copy[col], errors="coerce") for col in available], axis=1
     ).mean(axis=1, skipna=True)
+    if invert_scores:
+        score = 1 - score
     df_copy["risk_score"] = score
 
-    conditions = [score >= low_threshold, score >= high_threshold]
-    choices = ["Low", "Moderate"]
-    df_copy["risk_bucket"] = np.select(conditions, choices, default="High")
+    low_condition = score <= low_threshold
+    high_condition = score >= high_threshold
+    df_copy["risk_bucket"] = np.select(
+        [low_condition, high_condition], ["Low", "High"], default="Moderate"
+    )
     df_copy.loc[score.isna(), "risk_bucket"] = "Unknown"
     return df_copy
