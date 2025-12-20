@@ -248,7 +248,7 @@ def add_predictions(
 
 st.set_page_config(page_title="Legacy Dashboard", page_icon="🧰", layout="wide")
 
-st.title("🧰 Legacy Dashboard (Deprecated)")
+st.title("Legacy Dashboard (Deprecated)")
 st.warning(
     "This dashboard uses local CSVs and model artifacts. It is deprecated—"
     "please use the Pipeline Runner and Analytics Dashboard for the current workflow."
