@@ -52,12 +52,30 @@ REQUIRED_COLUMNS = [
     "sleep_minutes",
 ]
 
+SLEEP_COLUMNS = [
+    "user_id",
+    "date",
+    "source",
+    "sleep_efficiency",
+    "awakenings_count",
+]
+
 FEATURE_COLUMNS = [
     "steps",
     "distance_km",
     "active_minutes",
     "calories",
     "sleep_minutes",
+]
+
+SLEEP_FEATURE_COLUMNS = [
+    "steps",
+    "distance_km",
+    "active_minutes",
+    "calories",
+    "sleep_minutes",
+    "sleep_efficiency",
+    "awakenings_count",
 ]
 
 
@@ -85,6 +103,21 @@ def _fetch_features(source: str, user_id: str | None, all_users: bool) -> pd.Dat
     df = pd.DataFrame(data)
     df = _ensure_columns(df, REQUIRED_COLUMNS)
     return df[REQUIRED_COLUMNS]
+
+
+def _fetch_sleep(source: str, user_id: str | None, all_users: bool) -> pd.DataFrame:
+    client = get_supabase_client()
+    query = (
+        client.table("daily_sleep")
+        .select("user_id,date,source,sleep_efficiency,awakenings_count")
+        .eq("source", source)
+    )
+    if not all_users:
+        query = query.eq("user_id", user_id)
+    data = query.execute().data or []
+    df = pd.DataFrame(data)
+    df = _ensure_columns(df, SLEEP_COLUMNS)
+    return df[SLEEP_COLUMNS]
 
 
 def _prepare_dataset(df: pd.DataFrame) -> pd.DataFrame:
@@ -141,21 +174,42 @@ def _run_inference(source: str, user_id: str | None, all_users: bool) -> int:
 
     data = _fetch_features(source=source, user_id=user_id, all_users=all_users)
     data = _prepare_dataset(data)
+    sleep_data = _fetch_sleep(source=source, user_id=user_id, all_users=all_users)
+    sleep_data = _prepare_dataset(sleep_data)
     _dataset_summary(data)
 
     if data.empty:
         logger.info("No rows found for inference; exiting.")
         return 0
 
-    features = data[FEATURE_COLUMNS].fillna(0.0)
+    merged = data.merge(
+        sleep_data[["user_id", "date", "source", "sleep_efficiency", "awakenings_count"]],
+        on=["user_id", "date", "source"],
+        how="left",
+    )
 
-    sleep_labels, sleep_proba = _predict_with_model(sleep_model, features)
-    activity_labels, activity_proba = _predict_with_model(activity_model, features)
+    missing_sleep_rows = (
+        merged[["sleep_efficiency", "awakenings_count"]].isna().any(axis=1).sum()
+    )
+    logger.info(
+        "Rows missing sleep fields after merge: %d",
+        missing_sleep_rows,
+    )
+
+    merged["awakenings_count"] = merged["awakenings_count"].fillna(0)
+    merged["sleep_efficiency"] = merged["sleep_efficiency"].fillna(0.0)
+
+    sleep_features = merged[SLEEP_FEATURE_COLUMNS].fillna(0.0)
+    activity_features = merged[FEATURE_COLUMNS].fillna(0.0)
+    logger.info("Sleep inference columns: %s", list(sleep_features.columns))
+
+    sleep_labels, sleep_proba = _predict_with_model(sleep_model, sleep_features)
+    activity_labels, activity_proba = _predict_with_model(activity_model, activity_features)
 
     _log_label_distribution("sleep_quality", sleep_labels)
     _log_label_distribution("activity_quality", activity_labels)
 
-    results = data[["user_id", "date", "source"]].copy()
+    results = merged[["user_id", "date", "source"]].copy()
     results["sleep_quality_label"] = sleep_labels.astype(int)
     results["sleep_quality_proba"] = sleep_proba if sleep_proba is not None else None
     results["activity_quality_label"] = activity_labels.astype(int)
