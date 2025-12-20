@@ -188,30 +188,36 @@ def _run_inference(source: str, user_id: str | None, all_users: bool) -> int:
         how="left",
     )
 
-    missing_sleep_rows = (
-        merged[["sleep_efficiency", "awakenings_count"]].isna().any(axis=1).sum()
-    )
-    logger.info(
-        "Rows missing sleep fields after merge: %d",
-        missing_sleep_rows,
-    )
+    total_rows = len(merged)
+    sleep_required = merged[["sleep_efficiency", "awakenings_count"]]
+    sleep_valid_mask = sleep_required.notna().all(axis=1)
+    skipped_sleep_rows = int((~sleep_valid_mask).sum())
+    logger.info("Total rows for inference: %d", total_rows)
+    logger.info("Rows skipped for sleep inference due to missing fields: %d", skipped_sleep_rows)
 
-    merged["awakenings_count"] = merged["awakenings_count"].fillna(0)
-    merged["sleep_efficiency"] = merged["sleep_efficiency"].fillna(0.0)
-
-    sleep_features = merged[SLEEP_FEATURE_COLUMNS].fillna(0.0)
+    sleep_features = merged.loc[sleep_valid_mask, SLEEP_FEATURE_COLUMNS].fillna(0.0)
     activity_features = merged[FEATURE_COLUMNS].fillna(0.0)
     logger.info("Sleep inference columns: %s", list(sleep_features.columns))
 
-    sleep_labels, sleep_proba = _predict_with_model(sleep_model, sleep_features)
     activity_labels, activity_proba = _predict_with_model(activity_model, activity_features)
+    sleep_labels: np.ndarray
+    sleep_proba: np.ndarray | None
+    if sleep_valid_mask.any():
+        sleep_labels, sleep_proba = _predict_with_model(sleep_model, sleep_features)
+    else:
+        sleep_labels = np.array([])
+        sleep_proba = None
 
     _log_label_distribution("sleep_quality", sleep_labels)
     _log_label_distribution("activity_quality", activity_labels)
 
     results = merged[["user_id", "date", "source"]].copy()
-    results["sleep_quality_label"] = sleep_labels.astype(int)
-    results["sleep_quality_proba"] = sleep_proba if sleep_proba is not None else None
+    results["sleep_quality_label"] = None
+    results["sleep_quality_proba"] = None
+    if sleep_valid_mask.any():
+        results.loc[sleep_valid_mask, "sleep_quality_label"] = sleep_labels.astype(int)
+        if sleep_proba is not None:
+            results.loc[sleep_valid_mask, "sleep_quality_proba"] = sleep_proba
     results["activity_quality_label"] = activity_labels.astype(int)
     results["activity_quality_proba"] = activity_proba if activity_proba is not None else None
     results["created_at"] = datetime.now(timezone.utc)
