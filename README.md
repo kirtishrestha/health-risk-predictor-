@@ -1,44 +1,117 @@
-# Health Risk Predictor
+# Fitbit Health Risk Predictor
 
-This repository sets up an end-to-end health risk predictor pipeline using the Kaggle **Fit Bit Raw Datasets** (archive.zip) focused on the **bella_b** participant data and now supporting an additional **bella_a** cohort. The project is structured for clean ingestion, transformation, modeling, and presentation.
+An end-to-end data engineering and machine learning project that ingests Fitbit wearable data, generates daily health risk predictions, and visualizes insights through an interactive Streamlit dashboard backed by Supabase.
 
-## Data Sources
-- Primary source: Kaggle Fit Bit Raw Datasets → `bella_b` CSV exports (`dailyActivity_merged`, `sleepDay_merged`, `heartrate_seconds_merged`).
-- Optional secondary source: `bella_a` CSV exports, merged into the combined dataset when present.
+---
 
-## High-Level Workflow
-1. **Ingestion to Supabase**: Raw CSVs from `data/raw/bella_b` will be loaded into Supabase.
-2. **PySpark ETL**: Transformations will build `daily_metrics` datasets stored in `data/processed` and Supabase.
-3. **Risk Label Generation**: Derived labels will prepare data for modeling.
-4. **Model Training**: Train sklearn models and save serialized `.pkl` files in `models/`.
-5. **Streamlit Dashboard**: Serve predictions and monitoring via a Streamlit app.
+## Overview
 
-## Getting started
-1. Create and activate a virtual environment:
-   - `python -m venv .venv`
-   - On macOS/Linux: `source .venv/bin/activate`
-   - On Windows: `.venv\\Scripts\\activate`
-2. Install dependencies: `pip install -r requirements.txt`.
-3. Run `sql/schema.sql` in Supabase (via the SQL editor) to create raw and daily metric tables.
-4. Set `SUPABASE_DB_URL` and (optionally) `SUPABASE_SCHEMA` environment variables.
-5. Load the raw Fitbit data into Supabase: `python -m src.ingestion.load_raw_fitbit`.
+This project demonstrates how raw smartwatch data can be transformed into meaningful health insights using a complete pipeline:
 
-This PR establishes the project scaffolding; detailed logic will be added in future iterations.
+- Fitbit ZIP data ingestion
+- Data cleaning and daily aggregation (ETL)
+- Machine learning model training and inference
+- Centralized storage using Supabase
+- Interactive analytics dashboard using Streamlit
 
-## ETL and Modeling
+The system focuses on **probability-based predictions** and **visual explainability**, not medical diagnosis.
 
-The PySpark ETL aggregates Fitbit CSV exports into daily metrics. It always reads `bella_b` and also reads `bella_a` when the directory is available, writing:
+---
 
-- `data/processed/daily_metrics.csv` (bella_b-only for backward compatibility when available)
-- `data/processed/daily_metrics_combined.csv` (all available sources)
+## Tech Stack
 
-- Run ETL: `python -m src.etl.build_daily_metrics`
-- Label and train models: `python -m src.ml.train_models` (trains on the combined dataset when present)
+- **Python** – ETL, feature engineering, ML
+- **Supabase (PostgreSQL)** – data storage
+- **Scikit-learn** – classification models
+- **Streamlit** – interactive dashboard
+- **Pickle** – model persistence
 
-## Streamlit dashboard
+---
 
-Launch the local dashboard to explore metrics and predictions (including a sidebar filter for data source):
+## Project Structure
+
+src/
+├── ingestion/ # Fitbit ZIP extraction & ETL
+├── features/ # Feature engineering
+├── ml/ # Model training & inference
+└── app/ # Streamlit application
+├── streamlit_app.py
+└── pages/
+├── Pipeline_Runner.py
+├── Analytics_Dashboard.py
+└── Legacy_Dashboard.py
+
+
+---
+
+## How It Works
+
+1. Upload Fitbit ZIP data in **Pipeline Runner**
+2. Run ETL to standardize and store daily metrics
+3. Train ML models on labeled daily data
+4. Run inference to generate probabilities and labels
+5. Explore predictions and trends in **Analytics Dashboard**
+
+---
+
+## Models & Predictions
+
+- Sleep quality classifier
+- Activity quality classifier
+- Probability scores (0–1) with derived labels
+- Rolling averages and risk bucket thresholds
+
+Models are evaluated based on **stability, interpretability, and probability outputs**, not raw accuracy alone.
+
+---
+
+## Dashboard Features
+
+- Daily / weekly / monthly views
+- Prediction KPIs and trends
+- Risk bucket distributions
+- Behavior vs prediction analysis
+- Histograms, box plots, heatmaps
+
+Advanced visualizations (Sankey, maps, treemap) are **commented out** when data is unavailable and can be re-enabled later.
+
+---
+
+## Limitations
+
+- Fitbit data only
+- Single-user focused
+- No clinical ground-truth labels
+- Not a medical or diagnostic system
+
+---
+
+## Future Improvements
+
+- Multi-user support
+- Additional wearable data sources
+- Time-series models
+- Model comparison and explainability
+- Personalized risk insights
+
+---
+
+## Run the App
 
 ```bash
+pip install -r requirements.txt
 streamlit run src/app/streamlit_app.py
-```
+
+
+## Disclaimer
+
+This project is for educational and research purposes only and does not provide medical advice.
+
+---
+
+If you want, I can also give you:
+- an **ultra-short README (10–12 lines)** for recruiters
+- a **MODEL_DECISIONS.md**
+- a **PROJECT_REPORT.md** for GitHub
+
+Just say the word.
