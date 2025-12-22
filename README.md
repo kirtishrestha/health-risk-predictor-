@@ -28,22 +28,6 @@ The system focuses on **probability-based predictions** and **visual explainabil
 
 ---
 
-## Project Structure
-
-src/
-├── ingestion/ # Fitbit ZIP extraction & ETL
-├── features/ # Feature engineering
-├── ml/ # Model training & inference
-└── app/ # Streamlit application
-├── streamlit_app.py
-└── pages/
-├── Pipeline_Runner.py
-├── Analytics_Dashboard.py
-└── Legacy_Dashboard.py
-
-
----
-
 ## How It Works
 
 1. Upload Fitbit ZIP data in **Pipeline Runner**
@@ -108,10 +92,3 @@ streamlit run src/app/streamlit_app.py
 This project is for educational and research purposes only and does not provide medical advice.
 
 ---
-
-If you want, I can also give you:
-- an **ultra-short README (10–12 lines)** for recruiters
-- a **MODEL_DECISIONS.md**
-- a **PROJECT_REPORT.md** for GitHub
-
-Just say the word.
